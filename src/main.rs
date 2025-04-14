@@ -1,6 +1,9 @@
+use cli::run_cli;
+
+pub mod cli;
 pub mod orderbook;
 pub mod orders;
 pub mod trade;
 fn main() {
-    println!("Hello, world!");
+    run_cli();
 }
