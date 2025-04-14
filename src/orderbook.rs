@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     orders::{Order, Side},
-    trade::{self, Trade},
+    trade::Trade,
 };
 
 pub struct OrderBook {
@@ -98,6 +98,18 @@ impl OrderBook {
                 .push_back(order);
         } else {
             eprint!("Cannot add market order to order book");
+        }
+    }
+    pub fn match_order(&mut self, mut incoming: Order) -> Vec<Trade> {
+        match incoming.side {
+            Side::Buy => {
+                //Market Buy => match asks (lowest first, not reversed)
+                match_incoming_side(&mut incoming, &mut self.asks, false)
+            }
+            Side::Sell => {
+                //Market Sell => match bids (highest first, reversed)
+                match_incoming_side(&mut incoming, &mut self.bids, true)
+            }
         }
     }
 }
