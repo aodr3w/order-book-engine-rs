@@ -10,7 +10,7 @@ use crate::{
 #[derive(Parser)]
 #[command(name = "Order Book CLI")]
 #[command(
-    author = "Your Name",
+    author = "Andrew Odiit",
     version = "0.1",
     about = "A demo of a limit order book"
 )]
