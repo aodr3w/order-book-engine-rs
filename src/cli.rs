@@ -31,11 +31,11 @@ enum Commands {
         #[arg(value_parser = PossibleValuesParser::new(["limit", "market"]))]
         order_type: String,
 
-        /// Price (only used for limit orders)
-        price: Option<u64>,
-
         /// Quantity (must be > 0)
         quantity: u64,
+
+        /// Price (only used for limit orders)
+        price: Option<u64>,
     },
 
     /// Match a new market order
