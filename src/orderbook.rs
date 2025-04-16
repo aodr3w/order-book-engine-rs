@@ -8,19 +8,40 @@ use crate::{
     trade::Trade,
 };
 
+/// An [`OrderBook`] stores **active** buy and sell orders in two separate
+/// [`BTreeMap`]s:
+/// - `bids` (buy orders)  
+/// - `asks` (sell orders)
+///
+/// Each price level (key) has a FIFO queue of orders stored in a [`VecDeque`]
+/// to maintain **price-time** priority.
 pub struct OrderBook {
+    /// Buy orders, keyed by price in ascending order.
+    ///
+    /// For matching, we'll iterate **in reverse** to find the highest bid first.
     pub bids: BTreeMap<u64, VecDeque<Order>>,
+
+    /// Sell orders, keyed by price in ascending order.
+    ///
+    /// For matching, we iterate **forwards** to find the lowest ask first.
     pub asks: BTreeMap<u64, VecDeque<Order>>,
 }
 
-//unify iterator types
+/// Internal enum to unify forward (`IterMut`) and reverse (`Rev<IterMut>`) BTreeMap iteration.
+///
+/// - [`EitherIter::Fwd`] handles ascending iteration over prices.
+/// - [`EitherIter::Rev`] handles descending iteration (used for matching sells against the highest bids).
 enum EitherIter<'a> {
+    /// Forward (ascending) iteration over the price levels.
     Fwd(std::collections::btree_map::IterMut<'a, u64, VecDeque<Order>>),
+    /// Reverse (descending) iteration over the price levels.
     Rev(std::iter::Rev<std::collections::btree_map::IterMut<'a, u64, VecDeque<Order>>>),
 }
 
 impl<'a> Iterator for EitherIter<'a> {
     type Item = (&'a u64, &'a mut VecDeque<Order>);
+
+    /// Retrieves the **next** `(price, VecDeque<Order>)` pair from the underlying iterator.
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             EitherIter::Fwd(iter) => iter.next(),
@@ -28,7 +49,18 @@ impl<'a> Iterator for EitherIter<'a> {
         }
     }
 }
-//helper function
+
+/// Matches an **incoming order** against one side of the order book,
+/// potentially producing a series of [`Trade`]s.
+///
+/// # Parameters
+/// - `incoming`: the incoming [`Order`] to be matched.
+/// - `book_side`: a mutable reference to the [`BTreeMap`] representing the relevant side
+///   of the book (e.g., `asks` for a buy, `bids` for a sell).
+/// - `reversed`: indicates whether to iterate in descending (`true`) or ascending (`false`) order.
+///
+/// # Returns
+/// A [`Vec<Trade>`] describing all the partial or full matches that occurred.
 fn match_incoming_side(
     incoming: &mut Order,
     book_side: &mut BTreeMap<u64, VecDeque<Order>>,
@@ -36,17 +68,20 @@ fn match_incoming_side(
 ) -> Vec<Trade> {
     let mut trades = Vec::new();
     let mut levels_to_remove = Vec::new();
-    //choose iterator
+
+    // Choose iterator direction based on `reversed`
     let iter = if reversed {
         EitherIter::Rev(book_side.iter_mut().rev())
     } else {
         EitherIter::Fwd(book_side.iter_mut())
     };
-    //Labeled loop so we can break out from inner while loop
+
+    // Labeled loop to break out early if `incoming.quantity` becomes zero.
     'outer: for (&price, orders_at_price) in iter {
         while let Some(order) = orders_at_price.front_mut() {
+            // Determine how many units to fill in this match
             let trade_qty = incoming.quantity.min(order.quantity);
-            //Record the trade
+
             trades.push(Trade {
                 price,
                 quantity: trade_qty,
@@ -54,31 +89,38 @@ fn match_incoming_side(
                 taker_id: incoming.id,
                 timestamp: SystemTime::now(),
             });
-            //Adjust quantities
+
+            // Update the quantities on both orders
             incoming.quantity -= trade_qty;
             order.quantity -= trade_qty;
 
-            //if the resting order is fully filled, remove it
+            // Remove the fully filled resting order from the queue front
             if order.quantity == 0 {
                 orders_at_price.pop_front();
             }
-            //if incoming order is fully filled , break out of both loops
+
+            // If the incoming order is fully satisfied, break out of both loops
             if incoming.quantity == 0 {
                 break 'outer;
             }
         }
-        // if this price level is fully consumed, mark for removal
+
+        // If all orders at this price were consumed, mark the level for cleanup
         if orders_at_price.is_empty() {
             levels_to_remove.push(price);
         }
     }
-    //Remove the emptied price levels
+
+    // Remove empty price levels
     for price in levels_to_remove {
         book_side.remove(&price);
     }
+
     trades
 }
+
 impl OrderBook {
+    /// Creates a new, empty [`OrderBook`], with no active bids or asks.
     pub fn new() -> Self {
         Self {
             bids: BTreeMap::new(),
@@ -86,6 +128,10 @@ impl OrderBook {
         }
     }
 
+    /// Adds a **limit** order to the order book (buy or sell).  
+    ///
+    /// If it's a market order (`price == None`), we print a warning and do not add it
+    /// since market orders match immediately and do not rest in the book.
     pub fn add_order(&mut self, order: Order) {
         if let Some(price) = order.price {
             let book_side = match order.side {
@@ -94,20 +140,33 @@ impl OrderBook {
             };
             book_side
                 .entry(price)
-                .or_insert(VecDeque::new())
+                .or_insert_with(VecDeque::new)
                 .push_back(order);
         } else {
-            eprint!("Cannot add market order to order book");
+            eprintln!("Warning: Attempting to add a market order to the book. Ignoring...");
         }
     }
+
+    /// Matches an incoming **market** order against the order book.
+    ///
+    /// # Behavior
+    /// - If `incoming.side` is `Buy`, we match against the `asks` from lowest to highest.
+    /// - If `incoming.side` is `Sell`, we match against the `bids` from highest to lowest.
+    ///
+    /// Returns a [`Vec<Trade>`] describing all executed trades.
+    ///
+    /// *Note:* For **limit** orders, you’d typically match what can be matched, then
+    /// rest the remainder in the book.  
+    /// Currently, this function is specialized for market orders or the "matching" portion
+    /// of a limit order.
     pub fn match_order(&mut self, mut incoming: Order) -> Vec<Trade> {
         match incoming.side {
             Side::Buy => {
-                //Market Buy => match asks (lowest first, not reversed)
+                // Market Buy => match asks (lowest first)
                 match_incoming_side(&mut incoming, &mut self.asks, false)
             }
             Side::Sell => {
-                //Market Sell => match bids (highest first, reversed)
+                // Market Sell => match bids (highest first)
                 match_incoming_side(&mut incoming, &mut self.bids, true)
             }
         }
