@@ -192,7 +192,6 @@ impl Default for OrderBook {
 }
 
 //tests
-
 #[cfg(test)]
 mod tests {
     use crate::orders::OrderType;
@@ -237,7 +236,6 @@ mod tests {
         assert_eq!(trades[1].quantity, 1);
         assert_eq!(trades[1].price, 102);
 
-        // Remaining ask at 102 should have 2 units left
         let remaining = ob.asks.get(&102).unwrap();
         assert_eq!(remaining[0].quantity, 2);
     }
@@ -280,5 +278,42 @@ mod tests {
         assert_eq!(trades.len(), 1);
         assert_eq!(trades[0].quantity, 5);
         assert!(ob.asks.is_empty());
+    }
+
+    #[test]
+    fn test_limit_order_partial_match_and_remainder() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Sell, 100, 5));
+
+        let mut limit_buy = sample_limit_order(2, Side::Buy, 101, 10);
+
+        // First match what can be matched
+        let trades = ob.match_order(limit_buy.clone());
+
+        // Simulate remaining amount being placed into the book
+        limit_buy.quantity -= trades.iter().map(|t| t.quantity).sum::<u64>();
+        if limit_buy.quantity > 0 {
+            ob.add_order(limit_buy.clone());
+        }
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].quantity, 5);
+        assert_eq!(ob.bids.len(), 1);
+        assert_eq!(ob.bids.get(&101).unwrap()[0].quantity, 5);
+    }
+
+    #[test]
+    fn test_limit_order_no_match_goes_to_book() {
+        let mut ob = OrderBook::new();
+
+        let limit_buy = sample_limit_order(10, Side::Buy, 90, 8);
+        let trades = ob.match_order(limit_buy.clone());
+
+        assert!(trades.is_empty());
+        ob.add_order(limit_buy);
+
+        assert_eq!(ob.bids.len(), 1);
+        assert_eq!(ob.bids.get(&90).unwrap()[0].quantity, 8);
     }
 }
