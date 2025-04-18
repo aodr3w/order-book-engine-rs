@@ -309,4 +309,60 @@ mod tests {
         assert_eq!(ob.bids.len(), 1);
         assert_eq!(ob.bids.get(&90).unwrap()[0].quantity, 8);
     }
+
+    #[test]
+    fn test_queue_fairness_fifo_fill_order() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Sell, 100, 4));
+        ob.add_order(sample_limit_order(2, Side::Sell, 100, 6));
+
+        let market_buy = sample_market_order(3, Side::Buy, 9);
+        let trades = ob.match_order(market_buy);
+
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].maker_id, 1);
+        assert_eq!(trades[0].quantity, 4);
+        assert_eq!(trades[1].maker_id, 2);
+        assert_eq!(trades[1].quantity, 5);
+
+        let remaining = ob.asks.get(&100).unwrap();
+        assert_eq!(remaining[0].quantity, 1);
+    }
+
+    #[test]
+    fn test_price_level_collision_limit_buy_matches_instead_of_resting() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Sell, 105, 5));
+
+        let crossing_buy = sample_limit_order(2, Side::Buy, 110, 3);
+        let trades = ob.match_order(crossing_buy);
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].price, 105);
+        assert_eq!(trades[0].quantity, 3);
+
+        let remaining = ob.asks.get(&105).unwrap();
+        assert_eq!(remaining[0].quantity, 2);
+        assert!(!ob.bids.contains_key(&110));
+    }
+
+    #[test]
+    fn test_price_level_collision_limit_sell_matches_instead_of_resting() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Buy, 100, 5));
+
+        let crossing_sell = sample_limit_order(2, Side::Sell, 90, 4);
+        let trades = ob.match_order(crossing_sell);
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].price, 100);
+        assert_eq!(trades[0].quantity, 4);
+
+        let remaining = ob.bids.get(&100).unwrap();
+        assert_eq!(remaining[0].quantity, 1);
+        assert!(!ob.asks.contains_key(&90));
+    }
 }
