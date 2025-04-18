@@ -112,15 +112,14 @@ fn match_incoming_side(
                 orders_at_price.pop_front();
             }
 
+            // If all orders at this price were consumed, mark the level for cleanup
+            if orders_at_price.is_empty() {
+                levels_to_remove.push(price);
+            }
             // If the incoming order is fully satisfied, break out of both loops
             if incoming.quantity == 0 {
                 break 'outer;
             }
-        }
-
-        // If all orders at this price were consumed, mark the level for cleanup
-        if orders_at_price.is_empty() {
-            levels_to_remove.push(price);
         }
     }
 
@@ -189,5 +188,97 @@ impl OrderBook {
 impl Default for OrderBook {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+//tests
+
+#[cfg(test)]
+mod tests {
+    use crate::orders::OrderType;
+
+    use super::*;
+
+    fn sample_limit_order(id: u64, side: Side, price: u64, quantity: u64) -> Order {
+        Order {
+            id,
+            side,
+            order_type: OrderType::Limit,
+            price: Some(price),
+            quantity,
+            timestamp: SystemTime::now(),
+        }
+    }
+
+    fn sample_market_order(id: u64, side: Side, quantity: u64) -> Order {
+        Order {
+            id,
+            side,
+            order_type: OrderType::Market,
+            price: None,
+            quantity,
+            timestamp: SystemTime::now(),
+        }
+    }
+
+    #[test]
+    fn test_partial_fill_market_buy() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Sell, 101, 5));
+        ob.add_order(sample_limit_order(2, Side::Sell, 102, 3));
+
+        let market_buy = sample_market_order(100, Side::Buy, 6);
+        let trades = ob.match_order(market_buy);
+
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].quantity, 5);
+        assert_eq!(trades[0].price, 101);
+        assert_eq!(trades[1].quantity, 1);
+        assert_eq!(trades[1].price, 102);
+
+        // Remaining ask at 102 should have 2 units left
+        let remaining = ob.asks.get(&102).unwrap();
+        assert_eq!(remaining[0].quantity, 2);
+    }
+
+    #[test]
+    fn test_partial_fill_market_sell() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Buy, 100, 4));
+
+        let market_sell = sample_market_order(200, Side::Sell, 10);
+        let trades = ob.match_order(market_sell);
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].quantity, 4);
+        assert_eq!(trades[0].price, 100);
+        assert!(!ob.bids.contains_key(&100));
+    }
+
+    #[test]
+    fn test_no_match_for_market_order() {
+        let mut ob = OrderBook::new();
+
+        let market_buy = sample_market_order(300, Side::Buy, 10);
+        let trades = ob.match_order(market_buy);
+
+        assert!(trades.is_empty());
+        assert!(ob.asks.is_empty());
+    }
+
+    #[test]
+    fn test_exact_match_market_order() {
+        let mut ob = OrderBook::new();
+
+        ob.add_order(sample_limit_order(1, Side::Sell, 100, 5));
+        let market_buy = sample_market_order(400, Side::Buy, 5);
+        assert!(ob.asks.len() == 1);
+        let trades = ob.match_order(market_buy);
+
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].quantity, 5);
+        assert!(ob.asks.is_empty());
     }
 }
