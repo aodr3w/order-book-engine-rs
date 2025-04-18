@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    orders::{Order, Side},
+    orders::{Order, OrderType, Side},
     trade::Trade,
 };
 
@@ -172,7 +172,7 @@ impl OrderBook {
     /// Currently, this function is specialized for market orders or the "matching" portion
     /// of a limit order.
     pub fn match_order(&mut self, mut incoming: Order) -> Vec<Trade> {
-        match incoming.side {
+        let trades = match incoming.side {
             Side::Buy => {
                 // Market Buy => match asks (lowest first)
                 match_incoming_side(&mut incoming, &mut self.asks, false)
@@ -181,7 +181,12 @@ impl OrderBook {
                 // Market Sell => match bids (highest first)
                 match_incoming_side(&mut incoming, &mut self.bids, true)
             }
-        }
+        };
+        //After matching , if its a limit order with leftover qty, insert into book
+        if incoming.order_type == OrderType::Limit && incoming.quantity > 0 {
+            self.add_order(incoming);
+        };
+        trades
     }
 }
 
@@ -194,8 +199,6 @@ impl Default for OrderBook {
 //tests
 #[cfg(test)]
 mod tests {
-    use crate::orders::OrderType;
-
     use super::*;
 
     fn sample_limit_order(id: u64, side: Side, price: u64, quantity: u64) -> Order {
@@ -286,16 +289,8 @@ mod tests {
 
         ob.add_order(sample_limit_order(1, Side::Sell, 100, 5));
 
-        let mut limit_buy = sample_limit_order(2, Side::Buy, 101, 10);
-
-        // First match what can be matched
-        let trades = ob.match_order(limit_buy.clone());
-
-        // Simulate remaining amount being placed into the book
-        limit_buy.quantity -= trades.iter().map(|t| t.quantity).sum::<u64>();
-        if limit_buy.quantity > 0 {
-            ob.add_order(limit_buy.clone());
-        }
+        let limit_buy = sample_limit_order(2, Side::Buy, 101, 10);
+        let trades = ob.match_order(limit_buy);
 
         assert_eq!(trades.len(), 1);
         assert_eq!(trades[0].quantity, 5);
@@ -308,11 +303,9 @@ mod tests {
         let mut ob = OrderBook::new();
 
         let limit_buy = sample_limit_order(10, Side::Buy, 90, 8);
-        let trades = ob.match_order(limit_buy.clone());
+        let trades = ob.match_order(limit_buy);
 
         assert!(trades.is_empty());
-        ob.add_order(limit_buy);
-
         assert_eq!(ob.bids.len(), 1);
         assert_eq!(ob.bids.get(&90).unwrap()[0].quantity, 8);
     }
