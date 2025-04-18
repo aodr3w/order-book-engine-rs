@@ -223,6 +223,7 @@ mod tests {
         }
     }
 
+    /// Tests a market buy order that partially fills against multiple sell orders.
     #[test]
     fn test_partial_fill_market_buy() {
         let mut ob = OrderBook::new();
@@ -243,6 +244,7 @@ mod tests {
         assert_eq!(remaining[0].quantity, 2);
     }
 
+    /// Tests a market sell order that partially fills against a smaller bid.
     #[test]
     fn test_partial_fill_market_sell() {
         let mut ob = OrderBook::new();
@@ -258,6 +260,7 @@ mod tests {
         assert!(!ob.bids.contains_key(&100));
     }
 
+    /// Tests that a market order does not match when there is no liquidity.
     #[test]
     fn test_no_match_for_market_order() {
         let mut ob = OrderBook::new();
@@ -269,6 +272,7 @@ mod tests {
         assert!(ob.asks.is_empty());
     }
 
+    /// Tests a market order that exactly matches an available quantity.
     #[test]
     fn test_exact_match_market_order() {
         let mut ob = OrderBook::new();
@@ -283,6 +287,7 @@ mod tests {
         assert!(ob.asks.is_empty());
     }
 
+    /// Tests a limit buy order that partially fills and rests the remainder.
     #[test]
     fn test_limit_order_partial_match_and_remainder() {
         let mut ob = OrderBook::new();
@@ -298,6 +303,7 @@ mod tests {
         assert_eq!(ob.bids.get(&101).unwrap()[0].quantity, 5);
     }
 
+    /// Tests a limit buy order that finds no match and gets added to the book.
     #[test]
     fn test_limit_order_no_match_goes_to_book() {
         let mut ob = OrderBook::new();
@@ -310,6 +316,7 @@ mod tests {
         assert_eq!(ob.bids.get(&90).unwrap()[0].quantity, 8);
     }
 
+    /// Tests that FIFO order is respected for multiple orders at the same price.
     #[test]
     fn test_queue_fairness_fifo_fill_order() {
         let mut ob = OrderBook::new();
@@ -330,6 +337,7 @@ mod tests {
         assert_eq!(remaining[0].quantity, 1);
     }
 
+    /// Tests that a limit buy above the ask price matches immediately (crossing).
     #[test]
     fn test_price_level_collision_limit_buy_matches_instead_of_resting() {
         let mut ob = OrderBook::new();
@@ -348,6 +356,7 @@ mod tests {
         assert!(!ob.bids.contains_key(&110));
     }
 
+    /// Tests that a limit sell below the bid price matches immediately (crossing).
     #[test]
     fn test_price_level_collision_limit_sell_matches_instead_of_resting() {
         let mut ob = OrderBook::new();
