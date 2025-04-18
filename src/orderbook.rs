@@ -61,6 +61,19 @@ impl<'a> Iterator for EitherIter<'a> {
 ///
 /// # Returns
 /// A [`Vec<Trade>`] describing all the partial or full matches that occurred.
+///
+/// # Notes
+/// - This function supports **partial fills**: if the resting order or the incoming order
+///   cannot fully satisfy the other, a partial match is made.
+/// - The fill quantity is determined using `min(incoming.quantity, resting.quantity)` to
+///   ensure the trade does not overfill either order. This is essential for:
+///   - Correct matching (only fill what’s available on both sides)
+///   - Preventing negative quantities or overflows
+///   - Supporting realistic order book behavior (e.g., partial matches over multiple price levels)
+///
+/// # Example
+/// - A market buy for 10 units encounters a sell (ask) order for 6 units.
+/// - The engine fills 6 units, then proceeds to match the remaining 4 against the next best ask.
 fn match_incoming_side(
     incoming: &mut Order,
     book_side: &mut BTreeMap<u64, VecDeque<Order>>,
