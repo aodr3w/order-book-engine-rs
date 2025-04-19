@@ -188,6 +188,19 @@ impl OrderBook {
         };
         trades
     }
+
+    //cancel order linear time implementation
+    pub fn cancel_order(&mut self, order_id: u64) -> bool {
+        for book_side in [&mut self.bids, &mut self.asks] {
+            for (_, queue) in book_side.iter_mut() {
+                if let Some(pos) = queue.iter().position(|o| o.id == order_id) {
+                    queue.remove(pos);
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 impl Default for OrderBook {
@@ -373,5 +386,26 @@ mod tests {
         let remaining = ob.bids.get(&100).unwrap();
         assert_eq!(remaining[0].quantity, 1);
         assert!(!ob.asks.contains_key(&90));
+    }
+
+    #[test]
+    fn test_cancel_existing_order() {
+        let mut ob = OrderBook::new();
+        let order = sample_limit_order(42, Side::Buy, 101, 10);
+        ob.add_order(order.clone());
+
+        let was_cancelled = ob.cancel_order(order.id);
+
+        assert!(was_cancelled);
+        assert!(ob.bids.get(&101).unwrap().is_empty()); //TODO should this key still be here even after cancellation ?
+    }
+
+    #[test]
+    fn test_cancel_nonexistent_order() {
+        let mut ob = OrderBook::new();
+        ob.add_order(sample_limit_order(1, Side::Sell, 99, 5));
+
+        let result = ob.cancel_order(999);
+        assert!(!result);
     }
 }
