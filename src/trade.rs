@@ -15,7 +15,7 @@ use std::time::SystemTime;
 /// Example:
 /// - A market buy order (taker) matches a limit sell at 102 (maker).
 /// - A trade is created at price 102.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Trade {
     pub price: u64,
     pub quantity: u64,

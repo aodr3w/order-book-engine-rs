@@ -1,6 +1,7 @@
 use crate::{orderbook::OrderBook, trade::Trade};
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct AppState {
     pub order_book: Arc<Mutex<OrderBook>>,
     pub trade_log: Arc<Mutex<Vec<Trade>>>,
