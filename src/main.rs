@@ -1,5 +1,6 @@
 use cli::run_cli;
 
+pub mod api;
 pub mod cli;
 pub mod orderbook;
 pub mod orders;
