@@ -1,6 +1,11 @@
 use std::time::SystemTime;
 
-use axum::{Json, Router, debug_handler, extract::State, http::StatusCode, routing::post};
+use axum::{
+    Json, Router, debug_handler,
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -15,6 +20,37 @@ pub struct NewOrder {
     pub order_type: OrderType,
     pub price: Option<u64>,
     pub quantity: u64,
+}
+
+#[derive(serde::Serialize)]
+pub struct BookSnapshot {
+    pub bids: Vec<(u64, u64)>,
+    pub asks: Vec<(u64, u64)>,
+}
+
+#[debug_handler]
+pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
+    let book = state.order_book.lock().unwrap();
+    let bids: Vec<(u64, u64)> = book
+        .bids
+        .iter()
+        .rev()
+        .map(|(price, orders)| {
+            let total_qty = orders.iter().map(|o| o.quantity).sum();
+            (*price, total_qty)
+        })
+        .collect();
+
+    let asks = book
+        .asks
+        .iter()
+        .map(|(price, orders)| {
+            let total_qty = orders.iter().map(|o| o.quantity).sum();
+            (*price, total_qty)
+        })
+        .collect();
+
+    Json(BookSnapshot { bids, asks })
 }
 
 #[debug_handler]
@@ -40,6 +76,7 @@ pub async fn create_order(
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/book", get(get_order_book))
         .route("/orders", post(create_order))
         .with_state(state)
 }
