@@ -35,19 +35,13 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
         .bids
         .iter()
         .rev()
-        .map(|(price, orders)| {
-            let total_qty = orders.iter().map(|o| o.quantity).sum();
-            (*price, total_qty)
-        })
+        .map(|(price, orders)| (*price, orders.iter().map(|o| o.quantity).sum()))
         .collect();
 
     let asks = book
         .asks
         .iter()
-        .map(|(price, orders)| {
-            let total_qty = orders.iter().map(|o| o.quantity).sum();
-            (*price, total_qty)
-        })
+        .map(|(price, orders)| (*price, orders.iter().map(|o| o.quantity).sum()))
         .collect();
 
     Json(BookSnapshot { bids, asks })
