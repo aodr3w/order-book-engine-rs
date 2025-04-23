@@ -29,6 +29,11 @@ pub struct BookSnapshot {
 }
 
 #[debug_handler]
+pub async fn get_trade_log(State(state): State<AppState>) -> Json<Vec<Trade>> {
+    let log = state.trade_log.lock().unwrap();
+    Json(log.to_vec())
+}
+#[debug_handler]
 pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
     let book = state.order_book.lock().unwrap();
     let bids: Vec<(u64, u64)> = book
@@ -72,5 +77,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/book", get(get_order_book))
         .route("/orders", post(create_order))
+        .route("/trades", get(get_trade_log))
         .with_state(state)
 }
