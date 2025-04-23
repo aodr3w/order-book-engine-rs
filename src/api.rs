@@ -31,6 +31,11 @@ pub struct BookSnapshot {
     pub asks: Vec<(u64, u64)>,
 }
 
+#[derive(serde::Serialize)]
+pub struct OrderAck {
+    order_id: u64,
+    trades: Vec<Trade>,
+}
 #[debug_handler]
 pub async fn get_trade_log(State(state): State<AppState>) -> Json<Vec<Trade>> {
     let log = state.trade_log.lock().unwrap();
@@ -59,7 +64,7 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
-) -> Result<Json<Vec<Trade>>, StatusCode> {
+) -> Result<Json<OrderAck>, StatusCode> {
     let mut book = state.order_book.lock().unwrap();
     let mut log = state.trade_log.lock().unwrap();
 
@@ -71,9 +76,11 @@ pub async fn create_order(
         quantity: payload.quantity,
         timestamp: SystemTime::now(),
     };
+    let order_id = order.id;
     let trades = book.match_order(order);
     log.extend(trades.clone());
-    Ok(Json(trades))
+    let resp = OrderAck { order_id, trades };
+    Ok(axum::Json(resp))
 }
 
 pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
