@@ -1,10 +1,13 @@
+use serde_json::json;
 use std::time::SystemTime;
+use tracing::{info, warn};
 
 use axum::{
     Json, Router, debug_handler,
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
+    response::IntoResponse,
+    routing::{delete, get, post},
 };
 use uuid::Uuid;
 
@@ -73,10 +76,25 @@ pub async fn create_order(
     Ok(Json(trades))
 }
 
+pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
+    let mut book = state.order_book.lock().unwrap();
+    if book.cancel_order(id) {
+        info!("Order {} cancelled successfully.", id);
+        (StatusCode::OK, Json(json!({"status": "cancelled"})))
+    } else {
+        warn!("Cancel failed: Order {} not found.", id);
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Order not found", "status": 404})),
+        )
+    }
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/book", get(get_order_book))
         .route("/orders", post(create_order))
         .route("/trades", get(get_trade_log))
+        .route("/orders/{id}", delete(cancel_order))
         .with_state(state)
 }
