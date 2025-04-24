@@ -77,6 +77,7 @@ pub async fn create_order(
         timestamp: SystemTime::now(),
     };
     let order_id = order.id;
+    tracing::info!("order with id: {} created", order_id);
     let trades = book.match_order(order);
     log.extend(trades.clone());
     let resp = OrderAck { order_id, trades };

@@ -1,12 +1,12 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    time::SystemTime,
-};
-
 use crate::{
     orders::{Order, OrderType, Side},
     trade::Trade,
 };
+use std::{
+    collections::{BTreeMap, VecDeque},
+    time::SystemTime,
+};
+use tracing::warn;
 
 /// An [`OrderBook`] stores **active** buy and sell orders in two separate
 /// [`BTreeMap`]s:
@@ -184,6 +184,7 @@ impl OrderBook {
         };
         //After matching , if its a limit order with leftover qty, insert into book
         if incoming.order_type == OrderType::Limit && incoming.quantity > 0 {
+            warn!("adding (partially or not filled) limit order to book");
             self.add_order(incoming);
         };
         trades
