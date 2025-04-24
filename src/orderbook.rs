@@ -6,7 +6,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     time::SystemTime,
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 /// An [`OrderBook`] stores **active** buy and sell orders in two separate
 /// [`BTreeMap`]s:
@@ -79,6 +79,7 @@ fn match_incoming_side(
     book_side: &mut BTreeMap<u64, VecDeque<Order>>,
     reversed: bool,
 ) -> Vec<Trade> {
+    info!("matching incoming order: {:?}", incoming);
     let mut trades = Vec::new();
     let mut levels_to_remove = Vec::new();
 
@@ -92,6 +93,7 @@ fn match_incoming_side(
     // Labeled loop to break out early if `incoming.quantity` becomes zero.
     'outer: for (&price, orders_at_price) in iter {
         while let Some(order) = orders_at_price.front_mut() {
+            warn!("emitting trades...");
             // Determine how many units to fill in this match
             let trade_qty = incoming.quantity.min(order.quantity);
 
@@ -125,9 +127,10 @@ fn match_incoming_side(
 
     // Remove empty price levels
     for price in levels_to_remove {
+        warn!("removing empty levels");
         book_side.remove(&price);
     }
-
+    info!("trades: {:?}", trades);
     trades
 }
 
