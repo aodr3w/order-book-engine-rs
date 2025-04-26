@@ -98,6 +98,10 @@ pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) ->
     }
 }
 
+// pub async  fn ws_handler(
+//     State(state): State<AppState>,
+//     ws: WebS
+// )
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/book", get(get_order_book))
