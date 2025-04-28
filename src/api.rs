@@ -89,6 +89,13 @@ pub async fn create_order(
     let order_id = order.id;
     tracing::info!("order with id: {} created", order_id);
     let trades = book.match_order(order);
+    //broadcast each trade to any WS subscribers
+    trades.iter().for_each(|trade| {
+        let _ = state.trade_tx.send(trade.clone());
+    });
+
+    //signal a full book snapshot (clients will re-pull a Booksnapshot)
+    let _ = state.book_tx.send(());
     log.extend(trades.clone());
     let resp = OrderAck { order_id, trades };
     Ok(axum::Json(resp))
@@ -98,6 +105,7 @@ pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) ->
     let mut book = state.order_book.lock().unwrap();
     if book.cancel_order(id) {
         info!("Order {} cancelled successfully.", id);
+        let _ = state.book_tx.send(());
         (StatusCode::OK, Json(json!({"status": "cancelled"})))
     } else {
         warn!("Cancel failed: Order {} not found.", id);
