@@ -193,9 +193,10 @@ impl OrderBook {
         trades
     }
 
-    //cancel order linear time implementation
-    //TODO shouldn't we have a locking mechanism here
-    //incase the order we want to cancel is about to be matched
+    /// Attempts to cancel an order by ID.
+    ///
+    /// Returns `true` if the order was found *and* removed;
+    /// also prunes the price level if it becomes empty.
     pub fn cancel_order(&mut self, order_id: u64) -> bool {
         for book_side in [&mut self.bids, &mut self.asks] {
             let mut price_to_prune: Option<u64> = None;
