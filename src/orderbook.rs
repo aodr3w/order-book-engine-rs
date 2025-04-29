@@ -194,13 +194,28 @@ impl OrderBook {
     }
 
     //cancel order linear time implementation
+    //TODO shouldn't we have a locking mechanism here
+    //incase the order we want to cancel is about to be matched
     pub fn cancel_order(&mut self, order_id: u64) -> bool {
         for book_side in [&mut self.bids, &mut self.asks] {
-            for (_, queue) in book_side.iter_mut() {
+            let mut price_to_prune: Option<u64> = None;
+            let mut found = false;
+            for (price, queue) in book_side.iter_mut() {
                 if let Some(pos) = queue.iter().position(|o| o.id == order_id) {
                     queue.remove(pos);
-                    return true;
+                    found = true;
+                    if queue.is_empty() {
+                        price_to_prune = Some(*price);
+                    }
+                    break;
                 }
+            }
+            if found {
+                //prune the price level if needed
+                if let Some(price) = price_to_prune {
+                    book_side.remove(&price);
+                }
+                return true;
             }
         }
         false
