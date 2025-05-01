@@ -4,6 +4,8 @@ use tracing_subscriber::FmtSubscriber;
 
 pub mod api;
 pub mod cli;
+pub mod errors;
+pub mod market_maker;
 pub mod orderbook;
 pub mod orders;
 pub mod state;
