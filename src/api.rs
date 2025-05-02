@@ -41,9 +41,9 @@ pub enum WsFrame {
     Trade(Trade),
     BookSnapshot(BookSnapshot),
 }
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct OrderAck {
-    order_id: u64,
+    pub order_id: u64,
     trades: Vec<Trade>,
 }
 #[debug_handler]

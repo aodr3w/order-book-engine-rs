@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
 /// Represents which side of the market the order is on.
@@ -11,7 +12,7 @@ use std::time::SystemTime;
 /// This sorting ensures the matching engine always finds the **best price first**:
 /// - Buyers match with the **lowest ask**
 /// - Sellers match with the **highest bid**
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Side {
     Buy,  // Bid
     Sell, // Ask
@@ -21,7 +22,7 @@ pub enum Side {
 ///
 /// - `Limit`: Executes at a specific price or better
 /// - `Market`: Executes immediately at the best available price
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum OrderType {
     Limit,
     Market,
