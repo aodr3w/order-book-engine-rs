@@ -100,52 +100,56 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
     let client = reqwest::Client::new();
     let mut outstanding: Vec<u64> = Vec::new();
     let mut interval = time::interval(time::Duration::from_millis(PACE_MS));
-
+    let mut last_mid = None;
     loop {
         interval.tick().await;
 
         // Only quote once we have a mid-price
         if let Some(mid_price) = *mid_rx.borrow() {
-            // Cancel all previous orders
-            for id in outstanding.drain(..) {
-                let _ = client
-                    .delete(format!("{}/orders/{}", api_base, id))
+            if Some(mid_price) != last_mid {
+                //market has moved, cancel & place new orders, and update mid price
+                // Cancel all previous orders
+                for id in outstanding.drain(..) {
+                    let _ = client
+                        .delete(format!("{}/orders/{}", api_base, id))
+                        .send()
+                        .await;
+                }
+
+                // Post a new bid
+                if let Ok(resp) = client
+                    .post(format!("{}/orders", api_base))
+                    .json(&NewOrder {
+                        side: Side::Buy,
+                        order_type: OrderType::Limit,
+                        price: Some(mid_price.saturating_sub(SPREAD)),
+                        quantity: 1,
+                    })
                     .send()
-                    .await;
-            }
-
-            // Post a new bid
-            if let Ok(resp) = client
-                .post(format!("{}/orders", api_base))
-                .json(&NewOrder {
-                    side: Side::Buy,
-                    order_type: OrderType::Limit,
-                    price: Some(mid_price.saturating_sub(SPREAD)),
-                    quantity: 1,
-                })
-                .send()
-                .await
-            {
-                if let Ok(ack) = resp.json::<OrderAck>().await {
-                    outstanding.push(ack.order_id);
+                    .await
+                {
+                    if let Ok(ack) = resp.json::<OrderAck>().await {
+                        outstanding.push(ack.order_id);
+                    }
                 }
-            }
 
-            // Post a new ask
-            if let Ok(resp) = client
-                .post(format!("{}/orders", api_base))
-                .json(&NewOrder {
-                    side: Side::Sell,
-                    order_type: OrderType::Limit,
-                    price: Some(mid_price + SPREAD),
-                    quantity: 1,
-                })
-                .send()
-                .await
-            {
-                if let Ok(ack) = resp.json::<OrderAck>().await {
-                    outstanding.push(ack.order_id);
+                // Post a new ask
+                if let Ok(resp) = client
+                    .post(format!("{}/orders", api_base))
+                    .json(&NewOrder {
+                        side: Side::Sell,
+                        order_type: OrderType::Limit,
+                        price: Some(mid_price + SPREAD),
+                        quantity: 1,
+                    })
+                    .send()
+                    .await
+                {
+                    if let Ok(ack) = resp.json::<OrderAck>().await {
+                        outstanding.push(ack.order_id);
+                    }
                 }
+                last_mid = Some(mid_price);
             }
         }
     }
