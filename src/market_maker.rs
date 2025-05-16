@@ -16,28 +16,26 @@ use crate::{
 // Continuously provides liquidity by posting a two-sided quote around the current mid-price.
 //
 // ## What it does
-// 1. Connects to your order‐book engine’s WebSocket feed (`/ws`) to receive live `BookSnapshot` frames.
+// 1. Connects to your order-book engine’s WebSocket feed (`/ws`) to receive live `BookSnapshot` frames.
 // 2. Extracts the best bid and best ask, and computes the mid-price as `(best_bid + best_ask) / 2`.
-// 3. Every `PACE_MS` milliseconds:
+// 3. Every `PACE_MS` milliseconds **only if the mid-price has changed**:
 //    - Cancels its prior bid and ask orders to avoid stale quotes.
 //    - Posts a fresh **buy** at `mid_price - SPREAD` and an **ask** at `mid_price + SPREAD` (size = 1).
 // 4. Remembers the `order_id`s it just placed so it can cancel them cleanly on the next cycle.
 //
 // ## Why it works
-// - **Two‐sided quoting** tightens the market: by always offering to buy and sell, the market maker
-//   narrows the spread and provides immediate liquidity to other traders.
-// - Re‐quoting at a fixed **PACE** avoids resting stale orders if the market moves:
-//   narrow spreads can quickly become unprofitable if the mid shifts—so we cancel and repost.
-// - A small constant **SPREAD** (in ticks) balances the trade‐off between capturing the spread
-//   (profit per trade) and being competitive (higher fill probability).
-// - Using a **watch channel** for the mid ensures the quoting loop always has the latest value
-//   without blocking on the WebSocket read task.
+// - **Two-sided quoting** tightens the market by always offering both sides, narrowing spreads and
+//   providing immediate liquidity.
+// - Re-quoting only when the mid shifts avoids unnecessary churn and fee overhead when the market is
+//   static.
+// - A fixed **SPREAD** balances profitability per trade against competitiveness (fill probability).
+// - Using a **watch channel** for the mid ensures the quoting loop always has the latest value without
+//   blocking the WebSocket read task.
 //
 // ## Key Constants
-// - `SPREAD`: fixed distance from mid-price for quotes. A larger spread gives more profit per fill
-//   but may be quoted less often by others.
-// - `PACE_MS`: how frequently (ms) to cancel & re-quote. A faster pace tracks a rapidly moving market
-//   more closely but generates more traffic and fees.
+// - `SPREAD`: fixed distance from mid-price for quotes. Larger spreads yield more profit but may be
+//   less competitive.
+// - `PACE_MS`: how frequently (ms) to check for mid-price changes and re-quote.
 
 // fixed distance from mid-price for quotes
 const SPREAD: u64 = 2;
@@ -96,7 +94,8 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
         }
     });
 
-    // 3) Every PACE_MS: cancel & repost quotes
+    // 3) Every PACE_MS: if the mid‐price has changed since our last quote,
+    //    cancel the old bid/ask and post fresh ones around the new mid.
     let client = reqwest::Client::new();
     let mut outstanding: Vec<u64> = Vec::new();
     let mut interval = time::interval(time::Duration::from_millis(PACE_MS));
