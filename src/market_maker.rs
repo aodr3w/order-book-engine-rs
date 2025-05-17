@@ -62,8 +62,8 @@ struct NewOrder {
 ///    - If we have a mid-price, cancel all currently outstanding quotes
 ///      via `DELETE /orders/{id}`
 ///    - Sends two new limit orders (size=1):
-///      - **Buy** at `(mid_price - SPREAD)`
-///      - **Sell** at `(mid_price + SPREAD)`
+///      - **Buy** at `(mid_price - SPREAD)` buy low
+///      - **Sell** at `(mid_price + SPREAD)` sell high
 ///    - Records the returned `order_id`s so they can be cancelled on the
 ///      next iteration.
 ///
@@ -138,7 +138,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                     .json(&NewOrder {
                         side: Side::Sell,
                         order_type: OrderType::Limit,
-                        price: Some(mid_price + SPREAD),
+                        price: Some(mid_price.saturating_add(SPREAD)),
                         quantity: 1,
                     })
                     .send()
