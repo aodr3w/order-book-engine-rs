@@ -78,6 +78,7 @@ fn match_incoming_side(
     incoming: &mut Order,
     book_side: &mut BTreeMap<u64, VecDeque<Order>>,
     reversed: bool,
+    price_limit: Option<u64>,
 ) -> Vec<Trade> {
     info!("matching incoming order: {:?}", incoming);
     let mut trades = Vec::new();
@@ -92,6 +93,13 @@ fn match_incoming_side(
 
     // Labeled loop to break out early if `incoming.quantity` becomes zero.
     'outer: for (&price, orders_at_price) in iter {
+        if let Some(limit) = price_limit {
+            match incoming.side {
+                Side::Buy if price > limit => break 'outer,
+                Side::Sell if price < limit => break 'outer,
+                _ => {}
+            }
+        }
         while let Some(order) = orders_at_price.front_mut() {
             warn!("emitting trades...");
             // Determine how many units to fill in this match
@@ -175,14 +183,20 @@ impl OrderBook {
     /// Currently, this function is specialized for market orders or the "matching" portion
     /// of a limit order.
     pub fn match_order(&mut self, mut incoming: Order) -> Vec<Trade> {
-        let trades = match incoming.side {
-            Side::Buy => {
-                // Market Buy => match asks (lowest first)
-                match_incoming_side(&mut incoming, &mut self.asks, false)
+        let incoming_price = incoming.price;
+        let trades = match (incoming.side, incoming.order_type) {
+            (Side::Buy, OrderType::Market) => {
+                match_incoming_side(&mut incoming, &mut self.asks, false, None)
             }
-            Side::Sell => {
-                // Market Sell => match bids (highest first)
-                match_incoming_side(&mut incoming, &mut self.bids, true)
+            (Side::Buy, OrderType::Limit) => {
+                match_incoming_side(&mut incoming, &mut self.asks, false, incoming_price)
+            }
+            (Side::Sell, OrderType::Market) => {
+                match_incoming_side(&mut incoming, &mut self.bids, true, None)
+            }
+
+            (Side::Sell, OrderType::Limit) => {
+                match_incoming_side(&mut incoming, &mut self.bids, true, incoming_price)
             }
         };
         //After matching , if its a limit order with leftover qty, insert into book
