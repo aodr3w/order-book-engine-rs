@@ -70,10 +70,22 @@ struct NewOrder {
 /// Errors from the WebSocket connection or HTTP client are wrapped in
 /// `MarketMakerError` for upstream handling.
 pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
+    let ws_url = format!("ws://{}/ws", api_base.trim_start_matches("http://"));
+    tracing::warn!("market maker: connecting to: {:?}", ws_url);
     // 1) Subscribe to /ws
-    let (ws_stream, _) = connect_async(format!("{}/ws", api_base))
-        .await
-        .map_err(|e| MarketMakerError::ConnectError(e.to_string()))?;
+    let ws_stream = loop {
+        match connect_async(&ws_url).await {
+            Ok((stream, _)) => {
+                tracing::info!("market maker: ws connected successfully");
+                break stream;
+            }
+            Err(e) => {
+                tracing::warn!("market maker: ws connect failed: {}; retrying...", e);
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await
+            }
+        }
+    };
+
     let (_write, mut read) = ws_stream.split();
 
     // Channel to hold the latest computed mid-price
@@ -86,10 +98,16 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
             if let Ok(WsFrame::BookSnapshot(BookSnapshot { bids, asks })) =
                 serde_json::from_str::<WsFrame>(&txt)
             {
+                tracing::info!("snapshot receieved... bids: {:?}, asks: {:?}", bids, asks);
                 if let (Some((best_bid, _)), Some((best_ask, _))) = (bids.first(), asks.first()) {
+                    tracing::info!("updating mid...");
                     let mid = (best_bid + best_ask) / 2;
                     let _ = mid_tx.send(Some(mid));
+                } else {
+                    tracing::error!("invalid snapshot structure: {:?} {:?}", bids, asks);
                 }
+            } else {
+                tracing::info!("listening for snapshots...");
             }
         }
     });
@@ -104,7 +122,9 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
         interval.tick().await;
 
         // Only quote once we have a mid-price
-        if let Some(mid_price) = *mid_rx.borrow() {
+
+        let mid_opt: Option<u64> = *mid_rx.borrow();
+        if let Some(mid_price) = mid_opt {
             if Some(mid_price) != last_mid {
                 //market has moved, cancel & place new orders, and update mid price
                 // Cancel all previous orders
@@ -114,7 +134,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                         .send()
                         .await;
                 }
-
+                tracing::info!(bid_price = mid_price.saturating_sub(SPREAD), "placing bid");
                 // Post a new bid
                 if let Ok(resp) = client
                     .post(format!("{}/orders", api_base))
@@ -131,7 +151,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                         outstanding.push(ack.order_id);
                     }
                 }
-
+                tracing::info!(bid_price = mid_price.saturating_add(SPREAD), "placing ask");
                 // Post a new ask
                 if let Ok(resp) = client
                     .post(format!("{}/orders", api_base))
