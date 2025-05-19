@@ -1,3 +1,37 @@
+//! Simulation harness for testing the Market Maker under load.
+//!
+//! Continuously sends random market orders against the API to:
+//! 1. Measure the Market Maker’s performance (P&L, inventory).
+//! 2. Stress-test quoting logic under varying order arrival rates.
+//!
+//! ## Components
+//!
+//! - `SimConfig` holds the simulation parameters:
+//!   - `api_base`: base URL of the REST API (e.g. `http://127.0.0.1:3000`).
+//!   - `run_secs`: total duration of the simulation in seconds.
+//!   - `attack_rate_hz`: rate (orders per second) at which to send market orders.
+//!
+//! - `run_simulation(cfg)`: the main async function that:
+//!   1. Creates an HTTP client.
+//!   2. Tracks a simulated trader’s **inventory** (`iv`) and **realized P&L** (`realized_pnl`).
+//!   3. Sets up a Tokio interval to pace market orders at `attack_rate_hz`.
+//!   4. For each tick until `run_secs` elapse:
+//!      - Randomly choose a side (`"Buy"` or `"Sell"`).
+//!      - Send a market order of size 1 via `POST /orders`.
+//!      - Parse the response trades, and update inventory/P&L:
+//!        - If the sim side is **Buy**, the MM sold: sim inventory--, sim receives price → realzied_pnl += price.
+//!        - If **Sell**, MM bought: sim inventory++, sim pays price → realized_pnl -= price.
+//!   5. After completion, prints summary of realized P&L and ending inventory.
+//!
+//! ## Rationale
+//!
+//! - **Random aggression** models external market flow against which the MM must provide liquidity.
+//! - **Market orders** ensure the MM’s quotes are tested: aggressors hit the best bid/ask.
+//! - Tracking **inventory** and **realized P&L** provides key metrics to evaluate the MM’s profitability
+//!   and risk exposure over time.
+//! - Adjustable **attack_rate_hz** allows us to simulate both low-frequency and high-frequency
+//!   market environments.
+
 use rand::Rng;
 use reqwest::Client;
 use serde_json::json;
