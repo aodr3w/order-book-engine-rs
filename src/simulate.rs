@@ -32,6 +32,29 @@
 //! - Adjustable **attack_rate_hz** allows us to simulate both low-frequency and high-frequency
 //!   market environments.
 
+//! # Simulation Harness
+//!
+//! This module provides a simple **adversarial simulation** that attacks the market maker
+//! with randomized, aggressive market orders to measure its realized profit and inventory risk.
+//!
+//! ## What it does
+//! 1. Sends market orders of size 1 at a configurable **attack rate** (`attack_rate_hz`) for a total
+//!    duration (`run_secs`).
+//! 2. Randomly chooses **Buy** or **Sell** side for each order to probe both sides of the MM’s quotes.
+//! 3. Parses the MM’s response (the `trades` array) to determine fills: if any trades occur, the
+//!    simulator was the taker and the MM was the maker.
+//! 4. Updates simple **P&L** and **inventory** counters:
+//!    - **Buy** market order → simulator buys 1 unit (MM sells), so inventory ↓ by 1,
+//!      P&L ↑ by `price * 1`.
+//!    - **Sell** market order → simulator sells 1 unit (MM buys), so inventory ↑ by 1,
+//!      P&L ↓ by `price * 1`.
+//!
+//! ## Why size = 1?
+//! - **Fine‑grained probing:** unit‐sized orders isolate single‐tick fills, making it easy to see
+//!   which side of the MM’s two‑sided quote was hit without crossing multiple levels.
+//! - **Simple accounting:** each trade moves inventory by exactly one unit, letting P&L be computed
+//!   as `±price` per trade with no need for aggregation or partial‐fill logic.
+
 use rand::Rng;
 use reqwest::Client;
 use serde_json::json;
