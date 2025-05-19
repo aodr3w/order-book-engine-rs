@@ -47,9 +47,30 @@ pub struct OrderAck {
     trades: Vec<Trade>,
 }
 #[debug_handler]
-pub async fn get_trade_log(State(state): State<AppState>) -> Json<Vec<Trade>> {
-    let log = state.trade_log.lock().unwrap();
-    Json(log.to_vec())
+pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Trade>>, StatusCode> {
+    let rows = sqlx::query!(
+        r#"SELECT price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
+           FROM trades
+           ORDER BY timestamp_utc DESC
+           LIMIT 100"# // paginate as needed
+    )
+    .fetch_all(&state.db_pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let trades = rows
+        .into_iter()
+        .map(|r| {
+            let price_u64 = r.price.to_string().parse::<u64>().unwrap_or(0);
+            Trade {
+                price: price_u64,
+                quantity: r.quantity as u64,
+                maker_id: r.maker_id as u64,
+                taker_id: r.taker_id as u64,
+                timestamp: r.timestamp_utc.into(),
+            }
+        })
+        .collect();
+    Ok(Json(trades))
 }
 #[debug_handler]
 pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
@@ -75,28 +96,50 @@ pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
 ) -> Result<Json<OrderAck>, StatusCode> {
-    let mut book = state.order_book.lock().unwrap();
-    let mut log = state.trade_log.lock().unwrap();
+    let (order_id, trades) = {
+        let mut book = state.order_book.lock().unwrap();
+        let mut log = state.trade_log.lock().unwrap();
+        let order = Order {
+            id: Uuid::new_v4().as_u128() as u64,
+            side: payload.side,
+            order_type: payload.order_type,
+            price: payload.price,
+            quantity: payload.quantity,
+            timestamp: SystemTime::now(),
+        };
+        let order_id = order.id;
+        tracing::info!("order with id: {} created", order_id);
+        let trades = book.match_order(order);
+        //broadcast each trade to any WS subscribers
+        trades.iter().for_each(|trade| {
+            let _ = state.trade_tx.send(trade.clone());
+        });
 
-    let order = Order {
-        id: Uuid::new_v4().as_u128() as u64,
-        side: payload.side,
-        order_type: payload.order_type,
-        price: payload.price,
-        quantity: payload.quantity,
-        timestamp: SystemTime::now(),
+        //signal a full book snapshot (clients will re-pull a Booksnapshot)
+        let _ = state.book_tx.send(());
+        log.extend(trades.clone());
+        (order_id, trades)
     };
-    let order_id = order.id;
-    tracing::info!("order with id: {} created", order_id);
-    let trades = book.match_order(order);
-    //broadcast each trade to any WS subscribers
-    trades.iter().for_each(|trade| {
-        let _ = state.trade_tx.send(trade.clone());
-    });
 
-    //signal a full book snapshot (clients will re-pull a Booksnapshot)
-    let _ = state.book_tx.send(());
-    log.extend(trades.clone());
+    for trade in &trades {
+        sqlx::query!(
+            r#"
+            INSERT INTO trades (price, quantity, maker_id, taker_id, timestamp_utc)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+            trade.price as f64,
+            trade.quantity as i64,
+            trade.maker_id as i64,
+            trade.taker_id as i64,
+            chrono::Utc::now(),
+        )
+        .execute(&state.db_pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("DB insert failed: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    }
     let resp = OrderAck { order_id, trades };
     Ok(axum::Json(resp))
 }

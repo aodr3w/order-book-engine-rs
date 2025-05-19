@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     let api_base = "http://127.0.0.1:3000".to_string();
 
     // --- 1) Launch our Axum server in the background
-    let state = AppState::new();
+    let state = AppState::new().await;
     let app = api::router(state.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     tokio::spawn(async move {
