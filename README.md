@@ -5,10 +5,15 @@ A high-performance matching engine, limit order book, market maker, and simulato
 ⸻
 
 🧑‍🎓 Learning Outcomes
+
 	•	Rust mastery: ownership/borrowing, async/await with Tokio, synchronization (Mutex, watch channel).
+
 	•	Systems design: architecting a modular engine, REST+WebSocket APIs with Axum.
+
 	•	Database integration: schema migrations and persistence using SQLx+Postgres.
+
 	•	Trading concepts: limit vs market orders, price-time priority matching, two-sided quoting market making.
+      
 	•	Performance benchmarking: using Criterion to measure matching engine throughput and latency.
 
 ⸻
