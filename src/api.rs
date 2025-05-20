@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use tracing::{info, warn};
 
 use axum::{
-    Json, Router, debug_handler,
+    Json, Router,
     extract::{
         Path, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
@@ -46,7 +46,7 @@ pub struct OrderAck {
     pub order_id: u64,
     trades: Vec<Trade>,
 }
-#[debug_handler]
+
 pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Trade>>, StatusCode> {
     let rows = sqlx::query!(
         r#"SELECT price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
@@ -72,7 +72,7 @@ pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Tra
         .collect();
     Ok(Json(trades))
 }
-#[debug_handler]
+
 pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
     let book = state.order_book.lock().unwrap();
     let bids: Vec<(u64, u64)> = book
@@ -91,7 +91,6 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
     Json(BookSnapshot { bids, asks })
 }
 
-#[debug_handler]
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
