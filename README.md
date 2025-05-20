@@ -1,6 +1,6 @@
 🦀 Rust Orderbook Engine
 
-A high-performance matching engine and limit order book written in Rust, built for low-latency electronic trading systems.
+A simple matching engine and limit order book written in Rust, developed for educational purposes.
 
 ⸻
 
@@ -54,7 +54,7 @@ A high-performance matching engine and limit order book written in Rust, built f
        ┌────────────┐      ┌──────────────────┐   ┌───────────────┐
        │ Market     │◀─────│  Broadcast Layer │◀──│   Trade Log   │
        │ Maker Bot  │      └──────────────────┘   │   (Postgres)  │
-       └────────────┘                                 └───────────────┘
+       └────────────┘                             └───────────────┘
                 ▲                                          ▲
                 │                                          │
        ┌────────────┐      REST API Calls        ┌───────────────┐
