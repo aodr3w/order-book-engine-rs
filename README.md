@@ -1,134 +1,128 @@
-🦀 Rust Orderbook Engine
+Order Book Engine
 
-A simple matching engine and limit order book written in Rust, developed for educational purposes.
-
-⸻
-
-🎯 Learning Outcomes
-	•	Rust mastery: ownership, concurrency (async/await, tokio), channels, locking.
-	•	Orderbook internals: price-time priority, limit vs. market orders, partial fills.
-	•	Web APIs & WebSocket: axum for REST endpoints, real-time broadcast.
-	•	Database integration: sqlx migrations, Postgres persistence for trade history.
-	•	Benchmarking & simulation: criterion benches, synthetic market simulation, P&L tracking.
+A high-performance limit order book engine written in Rust, complete with:
+	•	Core Matching Engine (orderbook.rs): FIFO price-time priority matching for limit and market orders.
+	•	REST & WebSocket API (api.rs): Axum-powered HTTP server with endpoints to submit and cancel orders, fetch book snapshots, and stream trades.
+	•	CLI Interface (cli.rs): Command-line tool for submitting and matching orders, and viewing the current book.
+	•	Market Maker Bot (market_maker.rs): A simple two-sided quoting bot that connects via WebSocket and REST to provide liquidity.
+	•	Simulation Harness (simulate.rs): Adversarial simulator that sends random market orders to measure P&L and inventory risk.
+	•	Benchmarks (benchmarks.rs): Criterion benchmarks for order matching under configurable book depth and load.
 
 ⸻
 
-🧱 Core Features
-	•	Order Matching Engine (orderbook.rs)
-	•	Bid/Ask book as BTreeMap<u64, VecDeque<Order>>
-	•	Price-time FIFO matching, market & limit order support
-	•	Partial fills and book maintenance
-	•	REST & WebSocket API (api.rs)
-	•	POST /orders: submit orders, returns OrderAck with any immediate trades
-	•	GET /book: snapshot of aggregated depth
-	•	GET /trades: recent trade log from DB
-	•	/ws: real-time stream of trades & book snapshots
-	•	Market Maker Bot (market_maker.rs)
-	•	Two‐sided quoting around mid-price
-	•	WebSocket subscription for live book updates
-	•	Requotes when mid shifts: posts new bid/ask at mid ± SPREAD
-	•	Cleans up stale quotes to manage risk
-	•	Simulator (simulate.rs)
-	•	Random aggressor market orders at configurable rate
-	•	Tracks realized P&L and inventory of the market maker
-	•	Uses REST API to drive synthetic trading activity
-	•	Persistence
-	•	Postgres via sqlx migrations for trades table
-	•	Each executed trade is recorded with timestamp
-	•	Benchmarking
-	•	benches/benchmark.rs with criterion measuring matching latency
+Features
+	•	Limit & Market Orders: Supports both limit and market orders, with partial fills and price-level matching.
+	•	Order Cancels: Cancel orders by ID and clean up empty price levels.
+	•	Thread-safe State: Uses Arc<Mutex<OrderBook>> for shared state, and tokio::sync::broadcast for event notifications.
+	•	Persistence: Trades logged to PostgreSQL via sqlx migrations (in state.rs).
+	•	Streaming: WebSocket feed for live book snapshots and trade events.
+	•	Extensible: Modular design for plugging in custom strategies, simulations, and I/O layers.
 
 ⸻
 
-🏛 Architecture Overview
+Getting Started
 
-       ┌────────────┐      REST/WebSocket      ┌───────────────┐
-       │   HTTP     │   ┌──────────────────┐   │               │
-       │   Clients  │──▶│  Axum API Layer  │──▶│   Order Book  │
-       │  (Browser, │   └──────────────────┘   │   Matching    │
-       │   Bot, CLI)│                           │   Engine      │
-       └────────────┘                           └───────────────┘
-                ▲                                        │
-                │                 WebSocket              │
-                │                (Broadcast)             ▼
-       ┌────────────┐      ┌──────────────────┐   ┌───────────────┐
-       │ Market     │◀─────│  Broadcast Layer │◀──│   Trade Log   │
-       │ Maker Bot  │      └──────────────────┘   │   (Postgres)  │
-       └────────────┘                             └───────────────┘
-                ▲                                          ▲
-                │                                          │
-       ┌────────────┐      REST API Calls        ┌───────────────┐
-       │ Simulator  │───▶│  `POST /orders`  ────▶│ Trade Storage │
-       └────────────┘      (Market Orders)       └───────────────┘
+Prerequisites
+	•	Rust (latest stable)
+	•	PostgreSQL database
+	•	DATABASE_URL environment variable pointing to your Postgres instance
+	•	cargo, git, and optionally docker for local testing
 
-	•	API Layer (axum): handles HTTP & WebSocket, routes to AppState.
-	•	Order Book Engine: in-memory book + matching logic, protected by Mutex.
-	•	Broadcast Layer: two tokio::broadcast channels for distributing events.
-	•	Market Maker & Simulator: standalone async tasks driving and responding to book.
-	•	Database: persists executed trades for history and analytics.
+Clone & Build
 
-⸻
+git clone https://github.com/aodr3w/order_book-engine-rs.git
+cd order_book-engine-rs
+cargo build --release
 
-🚀 Getting Started
-	1.	Clone & configure
+Database Setup
 
-git clone https://github.com/your/repo.git
-cd order_book-engine
-cp .env.example .env
-# set DATABASE_URL=postgres://trader:secret@localhost:5432/orderbook
+Create a Postgres database and run migrations:
 
+dotenvy -e .env.sample -- sqlx migrate run
 
-	2.	Start Postgres with Docker
+Ensure your .env contains:
 
-docker-compose up -d
+DATABASE_URL=postgres://user:password@localhost:5432/orderbook
 
+Running the Server
 
-	3.	Run migrations
-
-cargo install sqlx-cli
-sqlx migrate run
-
-
-	4.	Build & run
+Starts the Axum HTTP & WS server on port 3000, seeds the book, market maker, and simulation:
 
 cargo run --release
 
+	•	HTTP API base: http://localhost:3000
+	•	WS feed: ws://localhost:3000/ws
 
-	5.	Seed initial book (optional)
+REST Endpoints
 
-# resting bid & ask so market maker has a mid
-curl -X POST http://localhost:3000/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"side":"Buy","order_type":"Limit","price":48,"quantity":10}'
-curl -X POST http://localhost:3000/orders \
-  -H 'Content-Type: application/json' \
-  -d '{"side":"Sell","order_type":"Limit","price":52,"quantity":10}'
+Method	Path	Description
+GET	/book	Returns current book snapshot
+POST	/orders	Create a new limit or market order
+DELETE	/orders/{id}	Cancel an existing order
+GET	/trades	Fetch latest trades (limit 100)
 
+WebSocket Frames
+	•	BookSnapshot: Full snapshot with bids and asks.
+	•	Trade: Individual trade events.
 
-	6.	Market maker & simulation run automatically on startup.
+CLI Usage
+
+# Add a limit buy order at price=100, qty=5
+o2 book-cli add buy limit 5 100
+
+# Send a market sell order qty=2
+o2 book-cli match sell 2
+
+# View current book
+o2 book-cli book
+
+Benchmarks
+
+Run Criterion benchmarks:
+
+cargo bench -- --nocapture
+
+Adjust depth and orders per price level in benchmarks.rs.
+
+Simulation
+
+Attack the engine with random market orders:
+
+cargo run --release --bin simulate
+
+Tune run_secs and attack_rate_hz in simulate.rs.
 
 ⸻
 
-🛠 Benchmarks & Simulation
-	•	Benchmark matching performance:
+Project Structure
 
-cargo bench
-
-
-	•	Simulation output P&L & inventory:
-
-# built into main; see startup logs for results
-
+├── benches/benchmarks.rs         # Criterion benchmarks
+├── src/
+│   ├── api.rs                   # Axum REST & WS API
+│   ├── cli.rs                   # Command-line interface
+│   ├── market_maker.rs          # Market maker bot
+│   ├── simulate.rs              # Simulation harness
+│   ├── state.rs                 # Shared application state & DB pool
+│   ├── orderbook.rs             # Core matching engine
+│   ├── orders.rs                # Order and side/type definitions
+│   ├── trade.rs                 # Trade struct definition
+│   ├── errors.rs                # Custom error types
+│   └── lib.rs                   # Module declarations
+├── migrations/                  # SQLx database migrations
+├── Cargo.toml
+└── README.md                    # You are here
 
 
 ⸻
 
-📈 Next Steps
-	•	📊 Interactive Web UI (React + Charting)
-	•	⚙️ Order persistence & query endpoints
-	•	🔒 Concurrency safety improvements (lock-free, sharded books)
-	•	🔄 Backtesting framework over historical data
+Contributing
+	1.	Fork the repo
+	2.	Create a feature branch (git checkout -b feat/my-feature)
+	3.	Run tests (cargo test) and benchmarks (cargo bench)
+	4.	Submit a pull request
 
 ⸻
 
-Built with ❤️ and Rust 🦀.
+License
+
+MIT © Andrew Odiit
