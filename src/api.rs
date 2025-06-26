@@ -21,6 +21,7 @@ use crate::{
     trade::Trade,
 };
 
+/// Handles incoming order creation requests
 #[derive(serde::Deserialize)]
 pub struct NewOrder {
     pub side: Side,
@@ -29,6 +30,8 @@ pub struct NewOrder {
     pub quantity: u64,
 }
 
+/// represents the state of the orderbooks at a particular point
+/// in time
 #[derive(Serialize, Deserialize)]
 pub struct BookSnapshot {
     pub bids: Vec<(u64, u64)>,
@@ -36,7 +39,7 @@ pub struct BookSnapshot {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
+//#[serde(tag = "type", content = "data")]
 pub enum WsFrame {
     Trade(Trade),
     BookSnapshot(BookSnapshot),
@@ -52,7 +55,7 @@ pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Tra
         r#"SELECT price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
            FROM trades
            ORDER BY timestamp_utc DESC
-           LIMIT 100"# // paginate as needed
+           LIMIT 100"#
     )
     .fetch_all(&state.db_pool)
     .await
@@ -73,6 +76,7 @@ pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Tra
     Ok(Json(trades))
 }
 
+// aggregates the orderbooks data into snap shot that can be sent across the network
 pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
     let book = state.order_book.lock().unwrap();
     let bids: Vec<(u64, u64)> = book
