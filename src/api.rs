@@ -111,23 +111,22 @@ pub async fn create_order(
             timestamp: SystemTime::now(),
         };
         let order_id = order.id;
-        tracing::info!("order with id: {} created", order_id);
         let trades = book.match_order(order);
-        //broadcast each trade to any WS subscribers
-        trades.iter().for_each(|trade| {
-            let _ = state.trade_tx.send(trade.clone());
-        });
-
-        //signal a full book snapshot (clients will re-pull a Booksnapshot)
-        let _ = state.book_tx.send(());
         log.extend(trades.clone());
         (order_id, trades)
     };
 
+    //persist all trades in a single db tx;
+    let mut tx = state
+        .db_pool
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     for trade in &trades {
         sqlx::query!(
             r#"
-            INSERT INTO trades (price, quantity, maker_id, taker_id, timestamp_utc)
+            INSERT INTO TRADES (price, quantity, maker_id, taker_id, timestamp_utc)
             VALUES ($1, $2, $3, $4, $5)
             "#,
             trade.price as f64,
@@ -136,15 +135,24 @@ pub async fn create_order(
             trade.taker_id as i64,
             chrono::Utc::now(),
         )
-        .execute(&state.db_pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!("DB insert failed: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     }
-    let resp = OrderAck { order_id, trades };
-    Ok(axum::Json(resp))
+    tx.commit().await.map_err(|e| {
+        tracing::error!("DB commit failed: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    //broadcast trades after successfull persistence
+    for trade in trades.iter() {
+        let _ = state.trade_tx.send(trade.clone());
+    }
+    let _ = state.book_tx.send(());
+    Ok(Json(OrderAck { order_id, trades }))
 }
 
 pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
