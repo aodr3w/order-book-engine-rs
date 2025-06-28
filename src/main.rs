@@ -15,16 +15,16 @@ pub mod trade;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // --- 0) Setup tracing
+    // Setup tracing
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    // the base URL our clients (MM & sim) will use
+    // The base URL our clients (Market Maker & Simulator) will use
     let api_base = "http://127.0.0.1:3000".to_string();
 
-    // --- 1) Launch our Axum server in the background
+    // Launch our Axum server in the background
     let state = AppState::new().await;
     let app = api::router(state.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
     // small delay to let the server finish its bind
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // --- 2) Seed the book with a resting bid @48 and ask @52
+    // Seed the book with a resting bid @48 and ask @52
     let client = reqwest::Client::new();
     for (side, price) in &[("Buy", 48), ("Sell", 52)] {
         client
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(side, price, "seeded resting order");
     }
 
-    // --- 3) Spawn the market maker
+    // Spawn the market maker
     {
         let b = api_base.clone();
         tokio::spawn(async move {
@@ -64,7 +64,7 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // --- 4) Spawn the attacker simulation
+    // Spawn the attacker simulation
     let sim_cfg = simulate::SimConfig {
         api_base,
         run_secs: 10,
@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Prevent main from exiting
+    //TODO Prevents premature exit, why not tokio join ???
     futures::future::pending::<()>().await;
     Ok(())
 }
