@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new().await;
     let app = api::router(state.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    tokio::spawn(async move {
+    let server_handle = tokio::spawn(async move {
         tracing::info!("HTTP/WS server listening on http://0.0.0.0:3000");
         // this will serve forever
         axum::serve(listener, app).await.unwrap();
@@ -55,14 +55,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Spawn the market maker
-    {
-        let b = api_base.clone();
-        tokio::spawn(async move {
-            if let Err(e) = market_maker::run_market_maker(&b).await {
-                tracing::error!("Market maker exited: {:?}", e);
-            }
-        });
-    }
+    let b = api_base.clone();
+    let mm_handler = tokio::spawn(async move {
+        if let Err(e) = market_maker::run_market_maker(&b).await {
+            tracing::error!("Market maker exited: {:?}", e);
+        }
+    });
 
     // Spawn the attacker simulation
     let sim_cfg = simulate::SimConfig {
@@ -70,13 +68,12 @@ async fn main() -> anyhow::Result<()> {
         run_secs: 10,
         attack_rate_hz: 5,
     };
-    tokio::spawn(async move {
+    let sim_handle = tokio::spawn(async move {
         if let Err(e) = simulate::run_simulation(sim_cfg).await {
             tracing::error!("Simulation error: {:?}", e);
         }
     });
 
-    //TODO Prevents premature exit, why not tokio join ???
-    futures::future::pending::<()>().await;
+    let _ = tokio::join!(server_handle, sim_handle, mm_handler);
     Ok(())
 }
