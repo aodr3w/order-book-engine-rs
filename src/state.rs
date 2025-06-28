@@ -4,12 +4,28 @@ use tokio::sync::broadcast;
 use crate::{orderbook::OrderBook, trade::Trade};
 use std::sync::{Arc, Mutex};
 
+/// Shared application state.
+///
+/// Holds:
+///  - `order_book` and `trade_log` behind `Arc<Mutex<…>>` for safe concurrent access  
+///  - `trade_tx` and `book_tx` broadcast channels to notify subscribers of new trades
+///    and order‐book updates  
+///  - `db_pool` for PostgreSQL connections
 #[derive(Clone)]
 pub struct AppState {
+    /// The in‐memory order‐book.
     pub order_book: Arc<Mutex<OrderBook>>,
+
+    /// The in‐memory trade history.
     pub trade_log: Arc<Mutex<Vec<Trade>>>,
+
+    /// Broadcast channel for new trades.
     pub trade_tx: broadcast::Sender<Trade>,
+
+    /// Broadcast channel for order‐book updates.
     pub book_tx: broadcast::Sender<()>,
+
+    /// Connection pool to the database.
     pub db_pool: PgPool,
 }
 
@@ -33,9 +49,3 @@ impl AppState {
         }
     }
 }
-
-// impl Default for AppState {
-//     fn default() -> Self {
-//         AppState::new().await
-//     }
-// }
