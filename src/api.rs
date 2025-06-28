@@ -21,7 +21,12 @@ use crate::{
     trade::Trade,
 };
 
-/// Handles incoming order creation requests
+/// Request payload for `POST /orders`.
+///
+/// - `side`: buy or sell  
+/// - `order_type`: limit or market  
+/// - `price`: limit price (ignored for market)  
+/// - `quantity`: how many units to trade
 #[derive(serde::Deserialize)]
 pub struct NewOrder {
     pub side: Side,
@@ -30,8 +35,10 @@ pub struct NewOrder {
     pub quantity: u64,
 }
 
-/// represents the state of the orderbooks at a particular point
-/// in time
+/// Response payload for `GET /book`.
+///
+/// - `bids`: list of `(price, total_quantity)` in descending order  
+/// - `asks`: list of `(price, total_quantity)` in ascending order
 #[derive(Serialize, Deserialize)]
 pub struct BookSnapshot {
     pub bids: Vec<(u64, u64)>,
@@ -44,12 +51,18 @@ pub enum WsFrame {
     Trade(Trade),
     BookSnapshot(BookSnapshot),
 }
+/// Response for `POST /orders`.
+///
+/// - `order_id`: the newly generated order ID  
+/// - `trades`: any matched trades resulting from this order
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct OrderAck {
     pub order_id: u64,
     trades: Vec<Trade>,
 }
-
+/// `GET /trades`  
+/// *Success:* 200, JSON `Vec<Trade>`
+/// *Failure:* 500 if the database query fails
 pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Trade>>, StatusCode> {
     let rows = sqlx::query!(
         r#"SELECT price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
@@ -76,7 +89,8 @@ pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Tra
     Ok(Json(trades))
 }
 
-// aggregates the orderbooks data into snap shot that can be sent across the network
+/// `GET /book`
+/// Returns a JSON snapshot of the current order‐book.
 pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
     let book = state.order_book.lock().unwrap();
     let bids: Vec<(u64, u64)> = book
@@ -95,6 +109,10 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
     Json(BookSnapshot { bids, asks })
 }
 
+/// `POST /orders`  
+/// Creates a new order.
+/// *Success:* 200, JSON `OrderAck`
+/// *Failure:* 500, JSON `{ "error": "internal server error" }`
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
@@ -155,6 +173,13 @@ pub async fn create_order(
     Ok(Json(OrderAck { order_id, trades }))
 }
 
+/// `DELETE /orders/{id}`
+/// Path parameter:
+/// - `id` – the UUID of the order to cancel.
+///
+/// Cancels the order with the given ID.
+/// *Success:* 200, JSON `{ "status": "cancelled" }`
+/// *Failure:* 404, JSON `{ "error": "Order not found", "status": 404 }`
 pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
     let mut book = state.order_book.lock().unwrap();
     if book.cancel_order(id) {
@@ -170,10 +195,16 @@ pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) ->
     }
 }
 
+/// `GET /ws`  
+/// Upgrades the HTTP connection to a WebSocket and then  
+/// streams order‐book snapshots and trade events to the client.
 pub async fn ws_handler(State(state): State<AppState>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
+/// Once the socket connection is upgraded from HTTP to WebSocket, drives the message loop:
+///  - Sends an initial `BookSnapshot`  
+///  - Listens for trade and book‐update broadcasts and forwards them
 pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let mut trade_rx = state.trade_tx.subscribe();
     let mut book_rx = state.book_tx.subscribe();
@@ -217,6 +248,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
     }
 }
 
+/// Constructs the application’s `Router` with all routes and shared state.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/book", get(get_order_book))
