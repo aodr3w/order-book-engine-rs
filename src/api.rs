@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::SystemTime;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use axum::{
     Json, Router,
@@ -227,12 +227,18 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
         }
     };
     let data = serde_json::to_string(&WsFrame::BookSnapshot(initial)).unwrap();
-    let _ = socket.send(Message::Text(data.into())).await;
+    if let Err(e) = socket.send(Message::Text(data.into())).await {
+        error!("Failed to send initial snapshot: {:?}", e);
+        return;
+    }
 
     loop {
         tokio::select! {
             Ok(trade) = trade_rx.recv() => {
-                if socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await.is_err(){break;}
+                if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await {
+                    error!("WebSocket send trade failed: {:?}", e);
+                    break;
+                }
             }
             Ok(_) = book_rx.recv() => {
                 let snap = {
@@ -242,7 +248,10 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
                         asks: book.asks.iter().map(|(p,o)| (*p,o.iter().map(|o|o.quantity).sum())).collect()
                     }
                 };
-                if socket.send(Message::Text(serde_json::to_string(&WsFrame::BookSnapshot(snap)).unwrap().into())).await.is_err(){break;}
+                if let Err(e) =  socket.send(Message::Text(serde_json::to_string(&WsFrame::BookSnapshot(snap)).unwrap().into())).await {
+                    error!("WebSocket send snapshot failed: {:?}", e);
+                    return;
+                }
             } else => break
         }
     }
