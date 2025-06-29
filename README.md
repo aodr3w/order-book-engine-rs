@@ -10,6 +10,50 @@ A high-performance limit order book engine written in Rust, complete with:
 
 ⸻
 
+Architecture
+
+┌─────────────────────┐        HTTP/WebSocket        ┌────────────────────────┐
+│  Order Book Engine  │<--------------------------->│  Market Maker Bot       │
+│ (server: api.rs)    │        REST: POST/DELETE    │ (market_maker.rs)       │
+│                     │        WS: BookSnapshot,    │                         │
+│  • orderbook.rs     │            Trade            │  • listens to WS feed   │
+│  • state.rs         │                             │  • computes mid-price   │
+│  • trade logging    │                             │  • cancels & reposts    │
+└─────────────────────┘                             └─────────────────────────┘
+         ▲  ^                                              ▲        
+         │  |                                              |         
+         |  | WS feed                                    | WS feed
+    REST |  |                                          REST|        
+         |  |                                          API |        
+         |  └───────────────────────────────▶────────────┘        
+         │                                                 
+┌─────────────────────┐                                       
+│ Simulation Harness  │                                       
+│  (simulate.rs)      │                                       
+│                     │                                       
+│  • sends market     │ REST: POST /orders                     
+│    orders at a      │                                       
+│    configured rate  │                                       
+│  • records P&L,     │                                       
+│    inventory risk   │                                       
+└─────────────────────┘                                       
+
+	•	Order Book Engine exposes:
+	•	POST /orders to place limit or market orders
+	•	DELETE /orders/{id} to cancel orders
+	•	GET /book to retrieve a snapshot of bids and asks
+	•	GET /ws to stream live snapshots and trade events
+	•	GET /trades to fetch recent trades
+	•	Market Maker connects to the WebSocket feed to get live book snapshots, computes the mid-price, and uses the REST API to place and cancel its own quotes in a loop.
+	•	Simulator bombards the engine with randomized market orders via REST to stress-test the matching logic and measure realized P&L and inventory changes.
+
+This modular architecture ensures:
+	•	Clear separation between core matching logic and strategy clients
+	•	Realistic testing of quoting strategies under live market conditions
+	•	Easy extension for additional bots or simulation scenarios
+
+⸻
+
 Features
 	•	Limit & Market Orders: Supports both limit and market orders, with partial fills and price-level matching.
 	•	Order Cancels: Cancel orders by ID and clean up empty price levels.
@@ -52,6 +96,8 @@ cargo run --release
 
 	•	HTTP API base: http://localhost:3000
 	•	WS feed: ws://localhost:3000/ws
+
+⸻
 
 REST Endpoints
 
@@ -110,7 +156,7 @@ Project Structure
 │   └── lib.rs                   # Module declarations
 ├── migrations/                  # SQLx database migrations
 ├── Cargo.toml
-└── README.md                    # You are here
+└── README.md                    # This file
 
 
 ⸻
