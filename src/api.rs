@@ -16,6 +16,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
+    instrument::Pair,
     orders::{Order, OrderType, Side},
     state::AppState,
     trade::Trade,
@@ -33,6 +34,7 @@ pub struct NewOrder {
     pub order_type: OrderType,
     pub price: Option<u64>,
     pub quantity: u64,
+    pub pair: Pair,
 }
 
 /// Response payload for `GET /book`.
