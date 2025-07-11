@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, arg, builder::PossibleValuesParser};
 use std::time::SystemTime;
 
 use crate::{
+    instrument::BTC_USD,
     orderbook::OrderBook,
     orders::{Order, OrderType, Side},
 };
@@ -78,6 +79,7 @@ fn handle_add(
         },
         quantity,
         timestamp: SystemTime::now(),
+        pair: BTC_USD,
     };
 
     match order_type {
@@ -112,6 +114,7 @@ pub fn handle_match(order_book: &mut OrderBook, side_str: String, quantity: u64)
         price: None,
         quantity,
         timestamp: SystemTime::now(),
+        pair: BTC_USD,
     };
     let trades = order_book.match_order(order);
     if trades.is_empty() {

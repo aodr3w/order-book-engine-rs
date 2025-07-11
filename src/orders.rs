@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 
+use crate::instrument::Pair;
+
 /// Represents which side of the market the order is on.
 ///
 /// # Intuition
@@ -40,4 +42,5 @@ pub struct Order {
     pub price: Option<u64>,
     pub quantity: u64,
     pub timestamp: SystemTime,
+    pub pair: Pair,
 }

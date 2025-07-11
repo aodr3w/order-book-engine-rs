@@ -1,4 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
+use order_book_engine::instrument::BTC_USD;
 use order_book_engine::orderbook::OrderBook;
 use order_book_engine::orders::{Order, OrderType, Side};
 use std::time::SystemTime;
@@ -16,6 +17,7 @@ fn setup_order_book(depth: u64, orders_per_level: u64) -> OrderBook {
                 price: Some(price),
                 quantity: 1,
                 timestamp: SystemTime::now(),
+                pair: BTC_USD,
             });
             ob.add_order(Order {
                 id: (depth + price) * 1_000 + i,
@@ -24,6 +26,7 @@ fn setup_order_book(depth: u64, orders_per_level: u64) -> OrderBook {
                 price: Some(price),
                 quantity: 1,
                 timestamp: SystemTime::now(),
+                pair: BTC_USD,
             });
         }
     }
@@ -43,6 +46,7 @@ fn bench_match_order(c: &mut Criterion) {
                 price: None,
                 quantity: depth * orders_per_level / 2,
                 timestamp: SystemTime::now(),
+                pair: BTC_USD,
             };
             ob.match_order(market_buy);
         })
@@ -57,6 +61,7 @@ fn bench_match_order(c: &mut Criterion) {
                 price: Some(depth / 2),
                 quantity: depth * orders_per_level,
                 timestamp: SystemTime::now(),
+                pair: BTC_USD,
             };
             ob.match_order(limit_sell)
         })

@@ -129,6 +129,7 @@ pub async fn create_order(
             price: payload.price,
             quantity: payload.quantity,
             timestamp: SystemTime::now(),
+            pair: payload.pair,
         };
         let order_id = order.id;
         let trades = book.match_order(order);
