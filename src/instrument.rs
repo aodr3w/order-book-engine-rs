@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub enum Asset {
     BTC,
     USD,
+    ETH,
 }
 
 //A Trading pair: base/quote
@@ -30,3 +31,11 @@ impl Pair {
 
 // TODO define pairs here
 // BTC_USD = Pair {base: ..., quote: ....}
+pub const BTC_USD: Pair = Pair {
+    base: Asset::BTC,
+    quote: Asset::USD,
+};
+pub const ETH_USD: Pair = Pair {
+    base: Asset::ETH,
+    quote: Asset::USD,
+};
