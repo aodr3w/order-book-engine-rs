@@ -246,6 +246,8 @@ impl Default for OrderBook {
 //tests
 #[cfg(test)]
 mod tests {
+    use crate::instrument::{BTC_USD, ETH_USD};
+
     use super::*;
 
     fn sample_limit_order(id: u64, side: Side, price: u64, quantity: u64) -> Order {
@@ -256,6 +258,7 @@ mod tests {
             price: Some(price),
             quantity,
             timestamp: SystemTime::now(),
+            pair: ETH_USD,
         }
     }
 
@@ -267,6 +270,7 @@ mod tests {
             price: None,
             quantity,
             timestamp: SystemTime::now(),
+            pair: BTC_USD,
         }
     }
 
