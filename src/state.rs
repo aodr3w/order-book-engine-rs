@@ -1,8 +1,11 @@
 use sqlx::PgPool;
 use tokio::sync::broadcast;
 
-use crate::{orderbook::OrderBook, trade::Trade};
-use std::sync::{Arc, Mutex};
+use crate::{instrument::Pair, orderbook::OrderBook, trade::Trade};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 /// Shared application state.
 ///
@@ -13,6 +16,8 @@ use std::sync::{Arc, Mutex};
 ///  - `db_pool` for PostgreSQL connections
 #[derive(Clone)]
 pub struct AppState {
+    ///in-memory map of books, with an order-book per pair
+    pub order_books: Arc<Mutex<HashMap<Pair, OrderBook>>>,
     /// The in‐memory order‐book.
     pub order_book: Arc<Mutex<OrderBook>>,
 
@@ -41,6 +46,7 @@ impl AppState {
         let (trade_tx, _) = broadcast::channel(1024); //size ??
         let (book_tx, _) = broadcast::channel(16); //size ??
         Self {
+            order_books: Arc::new(Mutex::new(HashMap::new())),
             order_book: Arc::new(Mutex::new(OrderBook::new())),
             trade_log: Arc::new(Mutex::new(Vec::new())),
             trade_tx,
