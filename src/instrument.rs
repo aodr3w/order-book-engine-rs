@@ -27,6 +27,9 @@ impl Pair {
             quote: Asset::USD,
         }
     }
+    pub fn supported() -> &'static [Pair] {
+        &[BTC_USD, ETH_USD]
+    }
 }
 
 // TODO define pairs here
