@@ -45,8 +45,13 @@ impl AppState {
         sqlx::migrate!("./migrations").run(&db_pool).await.unwrap();
         let (trade_tx, _) = broadcast::channel(1024); //size ??
         let (book_tx, _) = broadcast::channel(16); //size ??
+
+        let mut books = HashMap::new();
+        for pair in Pair::supported() {
+            books.insert(pair.clone(), OrderBook::new());
+        }
         Self {
-            order_books: Arc::new(Mutex::new(HashMap::new())),
+            order_books: Arc::new(Mutex::new(books)),
             order_book: Arc::new(Mutex::new(OrderBook::new())),
             trade_log: Arc::new(Mutex::new(Vec::new())),
             trade_tx,
