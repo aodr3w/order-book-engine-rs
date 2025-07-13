@@ -8,7 +8,7 @@ pub enum Asset {
 }
 
 //A Trading pair: base/quote
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Pair {
     /// The asset you buy or sell
     pub base: Asset,
