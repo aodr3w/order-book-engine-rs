@@ -118,9 +118,15 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
-) -> Result<Json<OrderAck>, StatusCode> {
+) -> Result<Json<OrderAck>, (StatusCode, Json<serde_json::Value>)> {
     if !Pair::supported().contains(&payload.pair) {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "unsupported pair",
+                "supported": Pair::supported().iter().map(|p|p.code()).collect::<Vec<_>>()
+            })),
+        ));
     };
 
     let (order_id, trades) = {
@@ -142,11 +148,13 @@ pub async fn create_order(
     };
 
     //persist all trades in a single db tx;
-    let mut tx = state
-        .db_pool
-        .begin()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.db_pool.begin().await.map_err(|e| {
+        error!("DB begin failed: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal server error"})),
+        )
+    })?;
 
     for trade in &trades {
         sqlx::query!(
@@ -164,12 +172,18 @@ pub async fn create_order(
         .await
         .map_err(|e| {
             tracing::error!("DB insert failed: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "failed to persist trades"})),
+            )
         })?;
     }
     tx.commit().await.map_err(|e| {
         tracing::error!("DB commit failed: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "DB Transaction commit failed"})),
+        )
     })?;
 
     //broadcast trades after successfull persistence
