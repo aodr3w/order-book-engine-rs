@@ -119,6 +119,10 @@ pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
 ) -> Result<Json<OrderAck>, StatusCode> {
+    if !Pair::supported().contains(&payload.pair) {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+
     let (order_id, trades) = {
         let mut book = state.order_book.lock().unwrap();
         let mut log = state.trade_log.lock().unwrap();
