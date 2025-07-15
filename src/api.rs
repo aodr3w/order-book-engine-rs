@@ -113,8 +113,13 @@ pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot>
 
 /// `POST /orders`  
 /// Creates a new order.
-/// *Success:* 200, JSON `OrderAck`
-/// *Failure:* 500, JSON `{ "error": "internal server error" }`
+///
+/// *Success:*  
+///   • 200, JSON `OrderAck`  
+/// *Bad Request:*  
+///   • 400, JSON `{ "error": "unsupported pair", "supported": ["BTC-USD","ETH-USD",…] }`  
+/// *Failure:*  
+///   • 500, JSON `{ "error": "internal server error" }`
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
