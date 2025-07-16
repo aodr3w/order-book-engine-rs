@@ -135,7 +135,8 @@ pub async fn create_order(
     };
 
     let (order_id, trades) = {
-        let mut book = state.order_book.lock().unwrap();
+        let mut books = state.order_books.lock().unwrap();
+        let book = books.get_mut(&payload.pair).unwrap();
         let mut log = state.trade_log.lock().unwrap();
         let order = Order {
             id: Uuid::new_v4().as_u128() as u64,
