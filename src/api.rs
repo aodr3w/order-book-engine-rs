@@ -65,12 +65,18 @@ pub struct OrderAck {
 /// `GET /trades`  
 /// *Success:* 200, JSON `Vec<Trade>`
 /// *Failure:* 500 if the database query fails
-pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Trade>>, StatusCode> {
+pub async fn get_trade_log(
+    Path(pair): Path<Pair>,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Trade>>, StatusCode> {
+    let symbol = pair.code().clone();
     let rows = sqlx::query!(
-        r#"SELECT price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
+        r#"SELECT symbol, price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
            FROM trades
+           WHERE symbol = $1
            ORDER BY timestamp_utc DESC
-           LIMIT 100"#
+           LIMIT 100"#,
+           symbol,
     )
     .fetch_all(&state.db_pool)
     .await
@@ -85,6 +91,7 @@ pub async fn get_trade_log(State(state): State<AppState>) -> Result<Json<Vec<Tra
                 maker_id: r.maker_id as u64,
                 taker_id: r.taker_id as u64,
                 timestamp: r.timestamp_utc.into(),
+                symbol: r.symbol,
             }
         })
         .collect();
@@ -145,7 +152,7 @@ pub async fn create_order(
             price: payload.price,
             quantity: payload.quantity,
             timestamp: SystemTime::now(),
-            pair: payload.pair,
+            pair: payload.pair.clone(),
         };
         let order_id = order.id;
         let trades = book.match_order(order);
@@ -165,9 +172,10 @@ pub async fn create_order(
     for trade in &trades {
         sqlx::query!(
             r#"
-            INSERT INTO TRADES (price, quantity, maker_id, taker_id, timestamp_utc)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO TRADES (symbol, price, quantity, maker_id, taker_id, timestamp_utc)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
+            payload.pair.code(),
             trade.price as f64,
             trade.quantity as i64,
             trade.maker_id as i64,
@@ -225,20 +233,32 @@ pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) ->
 /// `GET /ws`  
 /// Upgrades the HTTP connection to a WebSocket and then  
 /// streams order‐book snapshots and trade events to the client.
-pub async fn ws_handler(State(state): State<AppState>, ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+pub async fn ws_handler(
+    Path(pair): Path<Pair>,
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    if !Pair::supported().contains(&pair) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "unsupported pair"})),
+        )
+            .into_response();
+    }
+    ws.on_upgrade(move |socket| handle_socket(socket, state, pair))
 }
 
 /// Once the socket connection is upgraded from HTTP to WebSocket, drives the message loop:
 ///  - Sends an initial `BookSnapshot`  
 ///  - Listens for trade and book‐update broadcasts and forwards them
-pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
+pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     let mut trade_rx = state.trade_tx.subscribe();
     let mut book_rx = state.book_tx.subscribe();
 
     //initial snapshot
     let initial = {
-        let book = state.order_book.lock().unwrap();
+        let books = state.order_books.lock().unwrap();
+        let book = &books[&pair];
         BookSnapshot {
             bids: book
                 .bids
@@ -262,12 +282,15 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState) {
     loop {
         tokio::select! {
             Ok(trade) = trade_rx.recv() => {
+                if trade.symbol == pair.code() {
                 if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await {
                     error!("WebSocket send trade failed: {:?}", e);
                     break;
                 }
+                }
+
             }
-            Ok(_) = book_rx.recv() => {
+            Ok(book) = book_rx.recv() => {
                 let snap = {
                     let book = state.order_book.lock().unwrap();
                     BookSnapshot {
@@ -289,8 +312,8 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/book", get(get_order_book))
         .route("/orders", post(create_order))
-        .route("/trades", get(get_trade_log))
+        .route("/trades/:pair", get(get_trade_log))
         .route("/orders/{id}", delete(cancel_order))
-        .route("/ws", get(ws_handler))
+        .route("/ws/:pair", get(ws_handler))
         .with_state(state)
 }

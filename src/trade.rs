@@ -22,4 +22,5 @@ pub struct Trade {
     pub maker_id: u64,
     pub taker_id: u64,
     pub timestamp: SystemTime,
+    pub symbol: String,
 }

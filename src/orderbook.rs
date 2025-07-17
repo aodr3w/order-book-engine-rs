@@ -111,6 +111,7 @@ fn match_incoming_side(
                 maker_id: order.id,
                 taker_id: incoming.id,
                 timestamp: SystemTime::now(),
+                symbol: order.pair.code(),
             });
 
             // Update the quantities on both orders
