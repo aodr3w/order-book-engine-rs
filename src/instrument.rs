@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -29,6 +31,16 @@ impl Pair {
     }
     pub fn supported() -> &'static [Pair] {
         &[BTC_USD, ETH_USD]
+    }
+}
+impl FromStr for Pair {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Pair::supported()
+            .iter()
+            .find(|p| p.code() == s)
+            .cloned()
+            .ok_or_else(|| format!("unsupported symbol: `{}`", s))
     }
 }
 
