@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use crate::{
     instrument::Pair,
+    orderbook::BookSnapshot,
     orders::{Order, OrderType, Side},
     state::AppState,
     trade::Trade,
@@ -35,16 +36,6 @@ pub struct NewOrder {
     pub price: Option<u64>,
     pub quantity: u64,
     pub pair: Pair,
-}
-
-/// Response payload for `GET /book`.
-///
-/// - `bids`: list of `(price, total_quantity)` in descending order  
-/// - `asks`: list of `(price, total_quantity)` in ascending order
-#[derive(Serialize, Deserialize)]
-pub struct BookSnapshot {
-    pub bids: Vec<(u64, u64)>,
-    pub asks: Vec<(u64, u64)>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,22 +91,25 @@ pub async fn get_trade_log(
 
 /// `GET /book`
 /// Returns a JSON snapshot of the current order‐book.
-pub async fn get_order_book(State(state): State<AppState>) -> Json<BookSnapshot> {
-    let book = state.order_book.lock().unwrap();
-    let bids: Vec<(u64, u64)> = book
-        .bids
-        .iter()
-        .rev()
-        .map(|(price, orders)| (*price, orders.iter().map(|o| o.quantity).sum()))
-        .collect();
-
-    let asks = book
-        .asks
-        .iter()
-        .map(|(price, orders)| (*price, orders.iter().map(|o| o.quantity).sum()))
-        .collect();
-
-    Json(BookSnapshot { bids, asks })
+pub async fn get_order_book(
+    Path(pair): Path<Pair>,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    if !Pair::supported().contains(&pair) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "unsupported pair",
+                "supported": Pair::supported().iter().map(|p|p.code()).collect::<Vec<_>>()
+            })),
+        ));
+    };
+    let books = state.order_books.lock().unwrap();
+    let snapshot = books
+        .get(&pair)
+        .map(|book| BookSnapshot::for_pair(pair.clone(), book))
+        .unwrap_or_else(|| BookSnapshot::empty(pair));
+    Ok(Json(snapshot).into_response())
 }
 
 /// `POST /orders`  
@@ -259,19 +253,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     let initial = {
         let books = state.order_books.lock().unwrap();
         let book = &books[&pair];
-        BookSnapshot {
-            bids: book
-                .bids
-                .iter()
-                .rev()
-                .map(|(p, o)| (*p, o.iter().map(|o| o.quantity).sum()))
-                .collect(),
-            asks: book
-                .asks
-                .iter()
-                .map(|(p, o)| (*p, o.iter().map(|o| o.quantity).sum()))
-                .collect(),
-        }
+        BookSnapshot::for_pair(pair, book)
     };
     let data = serde_json::to_string(&WsFrame::BookSnapshot(initial)).unwrap();
     if let Err(e) = socket.send(Message::Text(data.into())).await {
@@ -290,7 +272,8 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
                 }
 
             }
-            Ok(book) = book_rx.recv() => {
+            Ok(_) = book_rx.recv() => {
+                //we need to check if this book snap shot is for the pair we are handling
                 let snap = {
                     let book = state.order_book.lock().unwrap();
                     BookSnapshot {

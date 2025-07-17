@@ -1,7 +1,9 @@
 use crate::{
+    instrument::Pair,
     orders::{Order, OrderType, Side},
     trade::Trade,
 };
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     time::SystemTime,
@@ -241,6 +243,47 @@ impl OrderBook {
 impl Default for OrderBook {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+//SnapShot
+/// returned as a Response payload for `GET /book`.
+///
+/// - `bids`: list of `(price, total_quantity)` in descending order  
+/// - `asks`: list of `(price, total_quantity)` in ascending order
+/// - `pair`: the market this snapshot belongs to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookSnapshot {
+    ///Which pair this is for
+    pub pair: Pair,
+    ///List of `(price, total_quantity)` in descending order
+    pub bids: Vec<(u64, u64)>,
+    ///List of `(price, total_quantity)` in ascending order
+    pub asks: Vec<(u64, u64)>,
+}
+
+impl BookSnapshot {
+    pub fn empty(pair: Pair) -> Self {
+        BookSnapshot {
+            pair,
+            bids: Vec::new(),
+            asks: Vec::new(),
+        }
+    }
+    pub fn for_pair(pair: Pair, book: &OrderBook) -> Self {
+        let bids = book
+            .bids
+            .iter()
+            .rev()
+            .map(|(p, orders)| (*p, orders.iter().map(|o| o.quantity).sum()))
+            .collect();
+        let asks = book
+            .asks
+            .iter()
+            .map(|(p, orders)| (*p, orders.iter().map(|o| o.quantity).sum()))
+            .collect();
+
+        BookSnapshot { pair, bids, asks }
     }
 }
 
