@@ -8,39 +8,62 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMsg};
 use crate::{
     api::{OrderAck, WsFrame},
     errors,
+    orderbook::BookSnapshot,
     orders::{OrderType, Side},
 };
 
 // # Market Maker Bot
 //
-// Continuously provides liquidity by posting a two-sided quote around the current mid-price.
+// Think of this bot as a friendly shopkeeper who always posts both a buy-price and a sell-price
+// for a given market pair. It listens to live order-book updates, finds the midpoint between the
+// best bid and ask, and continually refreshes its own two-sided quotes just above and below that
+// midpoint—providing liquidity for traders and capturing small spreads as profit.
 //
-// ## What it does
-// 1. Connects to your order-book engine’s WebSocket feed (`/ws`) to receive live `BookSnapshot` frames.
-// 2. Extracts the best bid and best ask, and computes the mid-price as `(best_bid + best_ask) / 2`.
-// 3. Every `PACE_MS` milliseconds **only if the mid-price has changed**:
-//    - Cancels its prior bid and ask orders to avoid stale quotes.
-//    - Posts a fresh **buy** at `mid_price - SPREAD` and an **ask** at `mid_price + SPREAD` (size = 1).
-// 4. Remembers the `order_id`s it just placed so it can cancel them cleanly on the next cycle.
+// ## At a Glance (Non-Technical)
+// - **Always visible:** Posts a buy order a little below the market mid-price, and a sell order a
+//   little above it, so anyone can trade immediately.
+// - **Lightweight:** Only updates its quotes when the midpoint actually moves, avoiding extra work
+//   or fees.
+// - **Steady profit:** The difference between its buy and sell prices (the **spread**) is how it
+//   earns a tiny bit each time someone hits its quote.
 //
-// ## Why it works
-// - **Two-sided quoting** tightens the market by always offering both sides, narrowing spreads and
-//   providing immediate liquidity.
-// - Re-quoting only when the mid shifts avoids unnecessary churn and fee overhead when the market is
-//   static.
-// - A fixed **SPREAD** balances profitability per trade against competitiveness (fill probability).
-// - Using a **watch channel** for the mid ensures the quoting loop always has the latest value without
-//   blocking the WebSocket read task.
+// ## How It Works (Technical)
+// 1. **Connect** to your engine’s WebSocket feed (`/ws`) and receive `BookSnapshot { pair, bids, asks }`.
+// 2. **Compute** the mid-price:
+//    ```text
+//    mid = (best_bid + best_ask) / 2
+//    ```
+// 3. **Every PACE_MS milliseconds** (default 500 ms), *if* the midpoint has changed since last time:
+//    - **Cancel** previously posted buy & sell orders to avoid stale quotes.
+//    - **Place** two fresh **limit** orders via REST:
+//      - **Buy** at `(mid_price - SPREAD)`
+//      - **Sell** at `(mid_price + SPREAD)`
+//    - **Remember** their order IDs so you can cancel them cleanly on the next cycle.
 //
-// ## Key Constants
-// - `SPREAD`: fixed distance from mid-price for quotes. Larger spreads yield more profit but may be
-//   less competitive.
-// - `PACE_MS`: how frequently (ms) to check for mid-price changes and re-quote.
+// ## Key Parameters
+// - `SPREAD: u64` — how far from the midpoint to quote.
+//   - Larger → greater profit per fill, but fewer fills.
+//   - Smaller → tighter market, but slimmer profit.
+// - `PACE_MS: u64` — how often (ms) to refresh quotes.
+//   - Faster → ultra-fresh quotes, but more cancellations/posts (and API calls).
+//   - Slower → less chatter, but you may miss rapid market moves.
+//
+// ## Why It Works
+// - **Two-Sided Liquidity:** Always having both bid and ask visible narrows spreads and attracts flow.
+// - **Efficient Churn:** Only react to real mid-price moves, avoiding needless cancel/post cycles.
+// - **Simple Model:** Fixed spread and interval make P&L predictable and coding straightforward.
+//
+// ## Under the Hood
+// - A **WebSocket** task parses `BookSnapshot` frames and sends midpoint updates into a
+//   `tokio::watch` channel.
+// - A **Quoting** loop ticks on a `tokio::time::interval`; it reads the latest mid-price, cancels
+//   old orders, and posts new ones with `reqwest`.
+// - All HTTP and WS errors are wrapped in `MarketMakerError` for clean upstream handling.
+//
 
-// fixed distance from mid-price for quotes
+// // how far from mid to quote
 const SPREAD: u64 = 2;
-
-// cadence for quote updates: cancel + repost every 500ms
+// // how many milliseconds between quote updates
 const PACE_MS: u64 = 500;
 
 // A small helper to serialize outgoing orders
@@ -95,7 +118,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
     tokio::spawn(async move {
         while let Some(Ok(WsMsg::Text(txt))) = read.next().await {
             // Only care about BookSnapshot frames
-            if let Ok(WsFrame::BookSnapshot(BookSnapshot { bids, asks })) =
+            if let Ok(WsFrame::BookSnapshot(BookSnapshot { pair, bids, asks })) =
                 serde_json::from_str::<WsFrame>(&txt)
             {
                 tracing::info!("snapshot receieved... bids: {:?}, asks: {:?}", bids, asks);
