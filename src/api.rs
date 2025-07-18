@@ -10,6 +10,7 @@ use axum::{
         ws::{Message, WebSocket},
     },
     http::StatusCode,
+    middleware,
     response::IntoResponse,
     routing::{delete, get, post},
 };
@@ -198,7 +199,7 @@ pub async fn create_order(
     for trade in trades.iter() {
         let _ = state.trade_tx.send(trade.clone());
     }
-    let _ = state.book_tx.send(());
+    let _ = state.book_tx.send(payload.pair);
     Ok(Json(OrderAck { order_id, trades }))
 }
 
@@ -209,14 +210,20 @@ pub async fn create_order(
 /// Cancels the order with the given ID.
 /// *Success:* 200, JSON `{ "status": "cancelled" }`
 /// *Failure:* 404, JSON `{ "error": "Order not found", "status": 404 }`
-pub async fn cancel_order(State(state): State<AppState>, Path(id): Path<u64>) -> impl IntoResponse {
-    let mut book = state.order_book.lock().unwrap();
-    if book.cancel_order(id) {
-        info!("Order {} cancelled successfully.", id);
-        let _ = state.book_tx.send(());
+pub async fn cancel_order(
+    State(state): State<AppState>,
+    Path((pair, order_id)): Path<(Pair, u64)>,
+) -> impl IntoResponse {
+    //TODO confirm pair is valid
+    //this is incomplete
+    let mut books = state.order_books.lock().unwrap();
+    let book = books.get_mut(&pair).unwrap();
+    if book.cancel_order(order_id) {
+        info!("Order {} cancelled successfully.", order_id);
+        let _ = state.book_tx.send(pair);
         (StatusCode::OK, Json(json!({"status": "cancelled"})))
     } else {
-        warn!("Cancel failed: Order {} not found.", id);
+        warn!("Cancel failed: Order {} not found.", order_id);
         (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Order not found", "status": 404})),
@@ -253,10 +260,16 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     let initial = {
         let books = state.order_books.lock().unwrap();
         let book = &books[&pair];
-        BookSnapshot::for_pair(pair, book)
+        BookSnapshot::for_pair(pair.clone(), book)
     };
-    let data = serde_json::to_string(&WsFrame::BookSnapshot(initial)).unwrap();
-    if let Err(e) = socket.send(Message::Text(data.into())).await {
+    if let Err(e) = socket
+        .send(Message::Text(
+            serde_json::to_string(&WsFrame::BookSnapshot(initial))
+                .unwrap()
+                .into(),
+        ))
+        .await
+    {
         error!("Failed to send initial snapshot: {:?}", e);
         return;
     }
@@ -264,7 +277,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     loop {
         tokio::select! {
             Ok(trade) = trade_rx.recv() => {
-                if trade.symbol == pair.code() {
+                if trade.symbol == pair.clone().code() {
                 if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await {
                     error!("WebSocket send trade failed: {:?}", e);
                     break;
@@ -272,18 +285,18 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
                 }
 
             }
-            Ok(_) = book_rx.recv() => {
-                //we need to check if this book snap shot is for the pair we are handling
-                let snap = {
-                    let book = state.order_book.lock().unwrap();
-                    BookSnapshot {
-                        bids: book.bids.iter().rev().map(|(p,o)| (*p,o.iter().map(|o|o.quantity).sum())).collect(),
-                        asks: book.asks.iter().map(|(p,o)| (*p,o.iter().map(|o|o.quantity).sum())).collect()
+            Ok(updated_pair) = book_rx.recv() => {
+                if updated_pair == pair.clone() {
+                    //get related book
+                    let book = {
+                         state.order_books.lock().unwrap()[&pair].clone()
+                    };
+
+                    let snap = BookSnapshot::for_pair(pair.clone(), &book);
+                    if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::BookSnapshot(snap)).unwrap().into())).await {
+                        error!("WebSocket send snapshot failed: {:?}", e);
+                        break;
                     }
-                };
-                if let Err(e) =  socket.send(Message::Text(serde_json::to_string(&WsFrame::BookSnapshot(snap)).unwrap().into())).await {
-                    error!("WebSocket send snapshot failed: {:?}", e);
-                    return;
                 }
             } else => break
         }
@@ -292,11 +305,14 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
 /// Constructs the application’s `Router` with all routes and shared state.
 pub fn router(state: AppState) -> Router {
-    Router::new()
-        .route("/book", get(get_order_book))
+    //all routes that require pair will pass throught the middleware that validates the pair argument
+    let pair_router = Router::new()
+        .route("/orders/:pair/:id", delete(cancel_order))
         .route("/orders", post(create_order))
         .route("/trades/:pair", get(get_trade_log))
-        .route("/orders/{id}", delete(cancel_order))
+        .route("/book/:pair", get(get_order_book))
         .route("/ws/:pair", get(ws_handler))
-        .with_state(state)
+        .layer(middleware::from_extractor::<Path<Pair>>());
+
+    Router::new().nest("/", pair_router).with_state(state)
 }

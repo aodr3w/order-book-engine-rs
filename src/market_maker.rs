@@ -6,7 +6,7 @@ use tokio::{sync::watch, time};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMsg};
 
 use crate::{
-    api::{BookSnapshot, OrderAck, WsFrame},
+    api::{OrderAck, WsFrame},
     errors,
     orders::{OrderType, Side},
 };

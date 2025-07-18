@@ -28,7 +28,7 @@ pub struct AppState {
     pub trade_tx: broadcast::Sender<Trade>,
 
     /// Broadcast channel for order‐book updates.
-    pub book_tx: broadcast::Sender<()>,
+    pub book_tx: broadcast::Sender<Pair>,
 
     /// Connection pool to the database.
     pub db_pool: PgPool,
