@@ -96,21 +96,12 @@ pub async fn get_order_book(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    if !Pair::supported().contains(&pair) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "unsupported pair",
-                "supported": Pair::supported().iter().map(|p|p.code()).collect::<Vec<_>>()
-            })),
-        ));
-    };
     let books = state.order_books.lock().unwrap();
     let snapshot = books
         .get(&pair)
         .map(|book| BookSnapshot::for_pair(pair.clone(), book))
         .unwrap_or_else(|| BookSnapshot::empty(pair));
-    Ok(Json(snapshot).into_response())
+    Json(snapshot).into_response()
 }
 
 /// `POST /orders`  
@@ -126,16 +117,6 @@ pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
 ) -> Result<Json<OrderAck>, (StatusCode, Json<serde_json::Value>)> {
-    if !Pair::supported().contains(&payload.pair) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": "unsupported pair",
-                "supported": Pair::supported().iter().map(|p|p.code()).collect::<Vec<_>>()
-            })),
-        ));
-    };
-
     let (order_id, trades) = {
         let mut books = state.order_books.lock().unwrap();
         let book = books.get_mut(&payload.pair).unwrap();
@@ -239,13 +220,6 @@ pub async fn ws_handler(
     State(state): State<AppState>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if !Pair::supported().contains(&pair) {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "unsupported pair"})),
-        )
-            .into_response();
-    }
     ws.on_upgrade(move |socket| handle_socket(socket, state, pair))
 }
 
