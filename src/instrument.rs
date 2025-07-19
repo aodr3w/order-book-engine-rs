@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Asset {
@@ -10,7 +10,7 @@ pub enum Asset {
 }
 
 //A Trading pair: base/quote
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Serialize, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Pair {
     /// The asset you buy or sell
     pub base: Asset,
@@ -41,6 +41,17 @@ impl FromStr for Pair {
             .find(|p| p.code() == s)
             .cloned()
             .ok_or_else(|| format!("unsupported symbol: `{}`", s))
+    }
+}
+
+//allows for deserialization of path variable into Pair
+impl<'de> Deserialize<'de> for Pair {
+    fn deserialize<D>(de: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(de)?;
+        Pair::from_str(&s).map_err(de::Error::custom)
     }
 }
 
