@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::SystemTime;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
 use axum::{
@@ -289,5 +290,15 @@ pub fn router(state: AppState) -> Router {
         .route("/ws/{pair}", get(ws_handler))
         .layer(middleware::from_extractor::<Path<Pair>>());
 
-    root.merge(pair_router).with_state(state)
+    root.merge(pair_router)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(
+                    DefaultMakeSpan::new()
+                        .include_headers(false)
+                        .level(tracing::Level::TRACE),
+                )
+                .on_response(DefaultOnResponse::new().level(tracing::Level::TRACE)),
+        )
+        .with_state(state)
 }
