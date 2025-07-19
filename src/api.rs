@@ -307,12 +307,12 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 pub fn router(state: AppState) -> Router {
     //all routes that require pair will pass throught the middleware that validates the pair argument
     let pair_router = Router::new()
-        .route("/orders/:pair/:id", delete(cancel_order))
+        .route("/orders/{pair}/{id}", delete(cancel_order))
         .route("/orders", post(create_order))
-        .route("/trades/:pair", get(get_trade_log))
-        .route("/book/:pair", get(get_order_book))
-        .route("/ws/:pair", get(ws_handler))
+        .route("/trades/{pair}", get(get_trade_log))
+        .route("/book/{pair}", get(get_order_book))
+        .route("/ws/{pair}", get(ws_handler))
         .layer(middleware::from_extractor::<Path<Pair>>());
 
-    Router::new().nest("/", pair_router).with_state(state)
+    Router::new().merge(pair_router).with_state(state)
 }
