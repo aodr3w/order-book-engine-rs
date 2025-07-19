@@ -38,7 +38,8 @@ async fn main() -> anyhow::Result<()> {
                 "side": side,
                 "order_type": "Limit",
                 "price": price,
-                "quantity": 10
+                "quantity": 10,
+                "symbol": Pair::crypto_usd(instrument::Asset::BTC).code()
             }))
             .send()
             .await?

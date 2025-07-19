@@ -61,6 +61,8 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
 
+use crate::instrument::{self, Pair};
+
 #[derive(Clone)]
 pub struct SimConfig {
     pub api_base: String,
@@ -86,7 +88,7 @@ pub async fn run_simulation(cfg: SimConfig) -> anyhow::Result<()> {
         //Aggressive market order of size=1
         let resp = client
             .post(format!("{}/orders", cfg.api_base))
-            .json(&json!({"side": side, "order_type": "Market", "quantity": 1}))
+            .json(&json!({"side": side, "order_type": "Market", "quantity": 1, "symbol": Pair::crypto_usd(instrument::Asset::BTC).code()}))
             .send()
             .await?;
         let ack: serde_json::Value = resp.json().await?;
