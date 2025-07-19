@@ -7,4 +7,5 @@ pub mod orderbook;
 pub mod orders;
 pub mod simulate;
 pub mod state;
+pub mod store;
 pub mod trade;
