@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::json;
-use std::time::SystemTime;
+use std::{str::FromStr, time::SystemTime};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
@@ -37,9 +37,16 @@ pub struct NewOrder {
     pub order_type: OrderType,
     pub price: Option<u64>,
     pub quantity: u64,
+    #[serde(rename = "symbol", deserialize_with = "parse_pair")]
     pub pair: Pair,
 }
-
+fn parse_pair<'de, D>(de: D) -> Result<Pair, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = String::deserialize(de)?;
+    Pair::from_str(&s).map_err(|_| de::Error::custom(format!("unsupported symbol `{}`", s)))
+}
 #[derive(Serialize, Deserialize)]
 //#[serde(tag = "type", content = "data")]
 pub enum WsFrame {
