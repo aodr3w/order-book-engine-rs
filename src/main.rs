@@ -1,18 +1,9 @@
+use order_book_engine::{api, instrument, market_maker, simulate, state::AppState};
 use serde_json::json;
-use state::AppState;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
-pub mod api;
-pub mod cli;
-pub mod errors;
-pub mod instrument;
-pub mod market_maker;
-pub mod orderbook;
-pub mod orders;
-pub mod simulate;
-pub mod state;
-pub mod trade;
+use order_book_engine::instrument::Pair;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -56,9 +47,10 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Spawn the market maker
+    let pair = Pair::crypto_usd(instrument::Asset::BTC);
     let b = api_base.clone();
     let mm_handler = tokio::spawn(async move {
-        if let Err(e) = market_maker::run_market_maker(&b).await {
+        if let Err(e) = market_maker::run_market_maker(&b, pair).await {
             tracing::error!("Market maker exited: {:?}", e);
         }
     });

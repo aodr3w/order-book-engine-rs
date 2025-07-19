@@ -1,4 +1,10 @@
+pub mod api;
+pub mod cli;
+pub mod errors;
 pub mod instrument;
+pub mod market_maker;
 pub mod orderbook;
 pub mod orders;
+pub mod simulate;
+pub mod state;
 pub mod trade;

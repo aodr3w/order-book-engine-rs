@@ -1,5 +1,5 @@
 [package]
-name = "order_book-engine"
+name = "order_book_engine"
 version = "0.1.0"
 edition = "2024"
 

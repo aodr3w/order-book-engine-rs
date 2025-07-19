@@ -1,3 +1,4 @@
+use crate::instrument::Pair;
 use errors::MarketMakerError;
 use futures_util::StreamExt;
 use reqwest;
@@ -73,6 +74,7 @@ struct NewOrder {
     order_type: OrderType,
     price: Option<u64>,
     quantity: u64,
+    pair: Pair,
 }
 
 /// Starts the market maker loop against a REST+WS API at `api_base`.
@@ -92,8 +94,13 @@ struct NewOrder {
 ///
 /// Errors from the WebSocket connection or HTTP client are wrapped in
 /// `MarketMakerError` for upstream handling.
-pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
-    let ws_url = format!("ws://{}/ws", api_base.trim_start_matches("http://"));
+pub async fn run_market_maker(api_base: &str, target_pair: Pair) -> Result<(), MarketMakerError> {
+    //use pair-specific websocket URL
+    let ws_url = format!(
+        "ws://{host}/ws/{pair}",
+        host = api_base.trim_start_matches("http://"),
+        pair = target_pair.code()
+    );
     tracing::warn!("market maker: connecting to: {:?}", ws_url);
     // 1) Subscribe to /ws
     let ws_stream = loop {
@@ -111,23 +118,25 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
 
     let (_write, mut read) = ws_stream.split();
 
-    // Channel to hold the latest computed mid-price
+    // watch channel for mid_price
     let (mid_tx, mid_rx) = watch::channel(None::<u64>);
 
     // 2) Spawn task: parse snapshots → update `mid_tx`
+    let v = target_pair.clone();
     tokio::spawn(async move {
         while let Some(Ok(WsMsg::Text(txt))) = read.next().await {
             // Only care about BookSnapshot frames
             if let Ok(WsFrame::BookSnapshot(BookSnapshot { pair, bids, asks })) =
                 serde_json::from_str::<WsFrame>(&txt)
             {
+                if pair != v {
+                    continue;
+                }
                 tracing::info!("snapshot receieved... bids: {:?}, asks: {:?}", bids, asks);
                 if let (Some((best_bid, _)), Some((best_ask, _))) = (bids.first(), asks.first()) {
                     tracing::info!("updating mid...");
                     let mid = (best_bid + best_ask) / 2;
                     let _ = mid_tx.send(Some(mid));
-                } else {
-                    tracing::error!("invalid snapshot structure: {:?} {:?}", bids, asks);
                 }
             } else {
                 tracing::info!("listening for snapshots...");
@@ -153,7 +162,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                 // Cancel all previous orders
                 for id in outstanding.drain(..) {
                     let _ = client
-                        .delete(format!("{}/orders/{}", api_base, id))
+                        .delete(format!("{}/orders/{}/{}", api_base, target_pair.code(), id))
                         .send()
                         .await;
                 }
@@ -166,6 +175,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                         order_type: OrderType::Limit,
                         price: Some(mid_price.saturating_sub(SPREAD)),
                         quantity: 1,
+                        pair: target_pair.clone(),
                     })
                     .send()
                     .await
@@ -183,6 +193,7 @@ pub async fn run_market_maker(api_base: &str) -> Result<(), MarketMakerError> {
                         order_type: OrderType::Limit,
                         price: Some(mid_price.saturating_add(SPREAD)),
                         quantity: 1,
+                        pair: target_pair.clone(),
                     })
                     .send()
                     .await
