@@ -1,4 +1,7 @@
-use bincode::config;
+use bincode::{
+    config,
+    error::{DecodeError, EncodeError},
+};
 use parity_db::{BTreeIterator, ColId, Db, Options};
 use serde_json;
 use std::{path::Path, time::UNIX_EPOCH};
@@ -15,6 +18,12 @@ pub enum StoreError {
     Serde(#[from] serde_json::Error),
     #[error("UTF-8 conversion error: {0}")]
     Utf8(#[from] std::string::FromUtf8Error),
+
+    #[error("Bincode encode error: {0}")]
+    BincodeEncode(#[from] EncodeError),
+
+    #[error("Bincode decode error: {0}")]
+    BincodeDecode(#[from] DecodeError),
 }
 
 pub type StoreResult<T> = Result<T, StoreError>;
@@ -36,6 +45,7 @@ impl Store {
 
     /// Insert a trade into the store under key "{symbol}:{timestamp_ms}".
     pub fn insert_trade(&mut self, trade: &Trade) -> StoreResult<()> {
+        let config = config::standard();
         // column 0 for trades
         let col: ColId = 0;
         let symbol = &trade.symbol;
@@ -52,7 +62,7 @@ impl Store {
         key.push(b':');
         key.extend(&ts.to_be_bytes());
         // serialize the trade as JSON
-        let value = serde_json::to_vec(trade)?;
+        let value = bincode::encode_to_vec(trade, config)?;
         // commit in a single-entry batch
         self.db.commit(vec![(col, key, Some(value))])?;
         Ok(())
