@@ -98,8 +98,40 @@ WebSocket API
 Connect to ws://localhost:3000/ws/{symbol} for live BookSnapshot and Trade frames.
 
 ```
-const socket = new WebSocket("ws://localhost:3000/ws/BTC-USD");
-socket.onmessage = (msg) => console.log(JSON.parse(msg.data));
+order_book-engine-rs % websocat ws://127.0.0.1:3000/ws/BTC-USD
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,6]],"asks":[[52,7]]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,5]],"asks":[[52,7]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":12256232967323569628,"timestamp":{"secs_since_epoch":1753122755,"nanos_since_epoch":46061000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,5]],"asks":[[52,6]]}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":13591937647730433539,"timestamp":{"secs_since_epoch":1753122755,"nanos_since_epoch":244592000},"symbol":"BTC-USD"}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":10698009476770110052,"timestamp":{"secs_since_epoch":1753122755,"nanos_since_epoch":444650000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,5]],"asks":[[52,5]]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,4]],"asks":[[52,5]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":12199289940956064951,"timestamp":{"secs_since_epoch":1753122755,"nanos_since_epoch":645060000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,4]],"asks":[[52,4]]}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":10532309852038529817,"timestamp":{"secs_since_epoch":1753122755,"nanos_since_epoch":844360000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,4]],"asks":[[52,3]]}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":13453026739183454039,"timestamp":{"secs_since_epoch":1753122756,"nanos_since_epoch":45486000},"symbol":"BTC-USD"}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":10075532142094481215,"timestamp":{"secs_since_epoch":1753122756,"nanos_since_epoch":244474000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,4]],"asks":[[52,2]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":13707341538759834384,"timestamp":{"secs_since_epoch":1753122756,"nanos_since_epoch":444773000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,3]],"asks":[[52,2]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":11400427895993397181,"timestamp":{"secs_since_epoch":1753122756,"nanos_since_epoch":644381000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,2]],"asks":[[52,2]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":12217184210333058439,"timestamp":{"secs_since_epoch":1753122756,"nanos_since_epoch":845628000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,1]],"asks":[[52,2]]}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":12628008327160511755,"timestamp":{"secs_since_epoch":1753122757,"nanos_since_epoch":44896000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[[48,1]],"asks":[[52,1]]}}
+{"Trade":{"price":48,"quantity":1,"maker_id":12675247018488016793,"taker_id":10283696296790073204,"timestamp":{"secs_since_epoch":1753122757,"nanos_since_epoch":244497000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[[52,1]]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[[52,1]]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
+{"Trade":{"price":52,"quantity":1,"maker_id":12079357885989867747,"taker_id":12903652176689684741,"timestamp":{"secs_since_epoch":1753122757,"nanos_since_epoch":644587000},"symbol":"BTC-USD"}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
+{"BookSnapshot":{"pair":{"base":"BTC","quote":"USD"},"bids":[],"asks":[]}}
 
 ```
 
