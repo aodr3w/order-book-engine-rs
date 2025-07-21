@@ -1,174 +1,103 @@
 Order Book Engine
 
-A high-performance limit order book engine written in Rust, complete with:
-	•	Core Matching Engine (orderbook.rs): FIFO price-time priority matching for limit and market orders.
-	•	REST & WebSocket API (api.rs): Axum-powered HTTP server with endpoints to submit and cancel orders, fetch book snapshots, and stream trades.
-	•	CLI Interface (cli.rs): Command-line tool for submitting and matching orders, and viewing the current book.
-	•	Market Maker Bot (market_maker.rs): A simple two-sided quoting bot that connects via WebSocket and REST to provide liquidity.
-	•	Simulation Harness (simulate.rs): Adversarial simulator that sends random market orders to measure P&L and inventory risk.
-	•	Benchmarks (benchmarks.rs): Criterion benchmarks for order matching under configurable book depth and load.
-
-⸻
-
-Architecture
-
-┌─────────────────────┐        HTTP/WebSocket        ┌────────────────────────┐
-│  Order Book Engine  │<--------------------------->│  Market Maker Bot       │
-│ (server: api.rs)    │        REST: POST/DELETE    │ (market_maker.rs)       │
-│                     │        WS: BookSnapshot,    │                         │
-│  • orderbook.rs     │            Trade            │  • listens to WS feed   │
-│  • state.rs         │                             │  • computes mid-price   │
-│  • trade logging    │                             │  • cancels & reposts    │
-└─────────────────────┘                             └─────────────────────────┘
-         ▲  ^                                              ▲        
-         │  |                                              |         
-         |  | WS feed                                    | WS feed
-    REST |  |                                          REST|        
-         |  |                                          API |        
-         |  └───────────────────────────────▶────────────┘        
-         │                                                 
-┌─────────────────────┐                                       
-│ Simulation Harness  │                                       
-│  (simulate.rs)      │                                       
-│                     │                                       
-│  • sends market     │ REST: POST /orders                     
-│    orders at a      │                                       
-│    configured rate  │                                       
-│  • records P&L,     │                                       
-│    inventory risk   │                                       
-└─────────────────────┘                                       
-
-	•	Order Book Engine exposes:
-	•	POST /orders to place limit or market orders
-	•	DELETE /orders/{id} to cancel orders
-	•	GET /book to retrieve a snapshot of bids and asks
-	•	GET /ws to stream live snapshots and trade events
-	•	GET /trades to fetch recent trades
-	•	Market Maker connects to the WebSocket feed to get live book snapshots, computes the mid-price, and uses the REST API to place and cancel its own quotes in a loop.
-	•	Simulator bombards the engine with randomized market orders via REST to stress-test the matching logic and measure realized P&L and inventory changes.
-
-This modular architecture ensures:
-	•	Clear separation between core matching logic and strategy clients
-	•	Realistic testing of quoting strategies under live market conditions
-	•	Easy extension for additional bots or simulation scenarios
-
-⸻
+A high-performance, Rust-based limit order book engine with REST and WebSocket APIs, in-memory matching, persistent trade storage via ParityDB, a market maker bot, and a simulation harness for stress-testing and benchmarking.
 
 Features
-	•	Limit & Market Orders: Supports both limit and market orders, with partial fills and price-level matching.
-	•	Order Cancels: Cancel orders by ID and clean up empty price levels.
-	•	Thread-safe State: Uses Arc<Mutex<OrderBook>> for shared state, and tokio::sync::broadcast for event notifications.
-	•	Persistence: Trades logged to PostgreSQL via sqlx migrations (in state.rs).
-	•	Streaming: WebSocket feed for live book snapshots and trade events.
-	•	Extensible: Modular design for plugging in custom strategies, simulations, and I/O layers.
+	•	Limit & Market Orders: Supports FIFO, price-time priority, partial fills, and crossing.
+	•	In-Memory Book: Fast matching engine using BTreeMap and VecDeque.
+	•	Persistence: Trades serialized with Bincode and stored in ParityDB.
+	•	REST API: Submit orders, query order book & trade history.
+	•	WebSocket API: Stream live book snapshots and trade events.
+	•	Market Maker Bot: Two-sided quoting around mid-price via REST+WS.
+	•	Simulation Harness: Adversarial load testing with random market orders.
+	•	CLI Tool: Simple command-line interface for manual interaction.
+	•	Benchmarking: Criterion benchmarks for matching performance.
 
-⸻
+Prerequisites
+	•	Rust (1.70+)
+	•	Cargo
+	•	gnuplot (for Criterion plots, or use plotters fallback)
+	•	Linux/macOS/Windows
 
 Getting Started
 
-Prerequisites
-	•	Rust (latest stable)
-	•	PostgreSQL database
-	•	DATABASE_URL environment variable pointing to your Postgres instance
-	•	cargo, git, and optionally docker for local testing
-
 Clone & Build
 
-git clone https://github.com/aodr3w/order_book-engine-rs.git
-cd order_book-engine-rs
+git clone https://github.com/your_org/order-book-engine.git
+cd order-book-engine
 cargo build --release
 
-Database Setup
+Run the Server
 
-Create a Postgres database and run migrations:
+# Launch HTTP & WS server with a ParityDB store at ./trade_store
+cargo run --release --bin order-book-engine
 
-dotenvy -e .env.sample -- sqlx migrate run
+Server listens on 0.0.0.0:3000 by default.
 
-Ensure your .env contains:
+Environment Variables
+	•	RUST_LOG – enable tracing (e.g. export RUST_LOG=trace).
 
-DATABASE_URL=postgres://user:password@localhost:5432/orderbook
+REST API
 
-Running the Server
+POST /orders – Submit a new order
 
-Starts the Axum HTTP & WS server on port 3000, seeds the book, market maker, and simulation:
+{
+  "side": "Buy",         // "Buy" or "Sell"
+  "order_type": "Limit", // "Limit" or "Market"
+  "price": 50,            // optional for market
+  "quantity": 1,
+  "symbol": "BTC-USD"
+}
 
-cargo run --release
+Response:
 
-	•	HTTP API base: http://localhost:3000
-	•	WS feed: ws://localhost:3000/ws
+{
+  "order_id": 12345,
+  "trades": [ /* any matches */ ]
+}
 
-⸻
+GET /book/{symbol} – Get current book snapshot
 
-REST Endpoints
+curl http://localhost:3000/book/BTC-USD
 
-Method	Path	Description
-GET	/book	Returns current book snapshot
-POST	/orders	Create a new limit or market order
-DELETE	/orders/{id}	Cancel an existing order
-GET	/trades	Fetch latest trades (limit 100)
+GET /trades/{symbol} – Get recent trades
 
-WebSocket Frames
-	•	BookSnapshot: Full snapshot with bids and asks.
-	•	Trade: Individual trade events.
+curl http://localhost:3000/trades/BTC-USD
+
+WebSocket API
+
+Connect to ws://localhost:3000/ws/{symbol} for live BookSnapshot and Trade frames.
+
+const socket = new WebSocket("ws://localhost:3000/ws/BTC-USD");
+socket.onmessage = (msg) => console.log(JSON.parse(msg.data));
 
 CLI Usage
 
-# Add a limit buy order at price=100, qty=5
-o2 book-cli add buy limit 5 100
+# Add limit order
+cargo run --bin order-book-engine -- cli add buy limit 10 --price 50
 
-# Send a market sell order qty=2
-o2 book-cli match sell 2
+# Match a market order
+cargo run --bin order-book-engine -- cli match sell 5
 
-# View current book
-o2 book-cli book
+# Show book
+cargo run --bin order-book-engine -- cli book
 
-Benchmarks
+Market Maker Bot
 
-Run Criterion benchmarks:
+Runs alongside the engine to provide two-sided quotes.
 
-cargo bench -- --nocapture
+cargo run --release --bin order-book-engine -- market-maker
 
-Adjust depth and orders per price level in benchmarks.rs.
+Simulation Harness
 
-Simulation
+Stress-test with random market orders:
 
-Attack the engine with random market orders:
+cargo run --release --bin order-book-engine -- simulate --run-secs 10 --attack-rate-hz 5
 
-cargo run --release --bin simulate
+Benchmarking
 
-Tune run_secs and attack_rate_hz in simulate.rs.
-
-⸻
-
-Project Structure
-
-├── benches/benchmarks.rs         # Criterion benchmarks
-├── src/
-│   ├── api.rs                   # Axum REST & WS API
-│   ├── cli.rs                   # Command-line interface
-│   ├── market_maker.rs          # Market maker bot
-│   ├── simulate.rs              # Simulation harness
-│   ├── state.rs                 # Shared application state & DB pool
-│   ├── orderbook.rs             # Core matching engine
-│   ├── orders.rs                # Order and side/type definitions
-│   ├── trade.rs                 # Trade struct definition
-│   ├── errors.rs                # Custom error types
-│   └── lib.rs                   # Module declarations
-├── migrations/                  # SQLx database migrations
-├── Cargo.toml
-└── README.md                    # This file
-
-
-⸻
-
-Contributing
-	1.	Fork the repo
-	2.	Create a feature branch (git checkout -b feat/my-feature)
-	3.	Run tests (cargo test) and benchmarks (cargo bench)
-	4.	Submit a pull request
-
-⸻
+cargo bench
 
 License
 
-MIT © Andrew Odiit
+MIT
