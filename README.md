@@ -34,7 +34,7 @@ Getting Started
 Clone & Build
 
 ```
-git clone https://github.com/your_org/order-book-engine.git
+git clone git@github.com:aodr3w/order_book-engine-rs.git
 cd order-book-engine
 cargo build --release
 ```
