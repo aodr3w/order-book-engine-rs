@@ -17,7 +17,7 @@ use tracing::{info, warn};
 ///
 /// Each price level (key) has a FIFO queue of orders stored in a [`VecDeque`]
 /// to maintain **price-time** priority.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OrderBook {
     /// Buy orders, keyed by price in ascending order.
     ///
