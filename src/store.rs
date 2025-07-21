@@ -1,3 +1,4 @@
+use bincode::config;
 use parity_db::{BTreeIterator, ColId, Db, Options};
 use serde_json;
 use std::{path::Path, time::UNIX_EPOCH};
@@ -103,6 +104,20 @@ impl Store {
             self.db.commit(batch)?;
         }
         Ok(())
+    }
+    pub fn iter_trades(&self) -> Result<impl Iterator<Item = Trade>, StoreError> {
+        let config = config::standard();
+        let mut iter = self.db.iter(0).map_err(StoreError::Parity)?;
+
+        iter.seek_to_first().map_err(StoreError::Parity)?;
+        Ok(std::iter::from_fn(move || match iter.next() {
+            Ok(Some((_key, raw))) => {
+                let (decoded, _): (Trade, usize) =
+                    bincode::decode_from_slice(&raw[..], config).unwrap();
+                Some(decoded)
+            }
+            _ => None,
+        }))
     }
 }
 

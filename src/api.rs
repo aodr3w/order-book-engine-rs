@@ -69,33 +69,13 @@ pub async fn get_trade_log(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Trade>>, StatusCode> {
+    //TODO this needs pagination logic
     let symbol = pair.code().clone();
-    let rows = sqlx::query!(
-        r#"SELECT symbol, price, quantity, maker_id as "maker_id!", taker_id as "taker_id!", timestamp_utc
-           FROM trades
-           WHERE symbol = $1
-           ORDER BY timestamp_utc DESC
-           LIMIT 100"#,
-           symbol,
-    )
-    .fetch_all(&state.db_pool)
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let trades = rows
-        .into_iter()
-        .map(|r| {
-            let price_u64 = r.price.to_string().parse::<u64>().unwrap_or(0);
-            Trade {
-                price: price_u64,
-                quantity: r.quantity as u64,
-                maker_id: r.maker_id as u64,
-                taker_id: r.taker_id as u64,
-                timestamp: r.timestamp_utc.into(),
-                symbol: r.symbol,
-            }
-        })
-        .collect();
-    Ok(Json(trades))
+    let store = state.store.lock().unwrap();
+    let trades = store.iter_trades().unwrap();
+    Ok(Json(
+        trades.into_iter().filter(|t| t.symbol == symbol).collect(),
+    ))
 }
 
 /// `GET /book`
@@ -144,45 +124,17 @@ pub async fn create_order(
         (order_id, trades)
     };
 
-    //persist all trades in a single db tx;
-    let mut tx = state.db_pool.begin().await.map_err(|e| {
-        error!("DB begin failed: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "internal server error"})),
-        )
-    })?;
-
+    //persist all trades in store
+    let mut store = state.store.lock().unwrap();
     for trade in &trades {
-        sqlx::query!(
-            r#"
-            INSERT INTO TRADES (symbol, price, quantity, maker_id, taker_id, timestamp_utc)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
-            payload.pair.code(),
-            trade.price as f64,
-            trade.quantity as i64,
-            trade.maker_id as i64,
-            trade.taker_id as i64,
-            chrono::Utc::now(),
-        )
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            tracing::error!("DB insert failed: {:?}", e);
+        store.insert_trade(trade).map_err(|e| {
+            error!("DB insert failed: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "failed to persist trades"})),
+                Json(json!({"error": "failed to persist trade"})),
             )
         })?;
     }
-    tx.commit().await.map_err(|e| {
-        tracing::error!("DB commit failed: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "DB Transaction commit failed"})),
-        )
-    })?;
 
     //broadcast trades after successfull persistence
     for trade in trades.iter() {

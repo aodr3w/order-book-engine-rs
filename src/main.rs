@@ -1,5 +1,6 @@
 use order_book_engine::{api, instrument, market_maker, simulate, state::AppState};
 use serde_json::json;
+use std::path::Path;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -17,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
     let api_base = "http://127.0.0.1:3000".to_string();
 
     // Launch our Axum server in the background
-    let state = AppState::new().await;
+    let state = AppState::new(Path::new("trade_store")).await.unwrap();
     let app = api::router(state.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     let server_handle = tokio::spawn(async move {
