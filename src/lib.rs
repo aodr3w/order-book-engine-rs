@@ -1,5 +1,4 @@
 pub mod api;
-pub mod cli;
 pub mod errors;
 pub mod instrument;
 pub mod market_maker;
