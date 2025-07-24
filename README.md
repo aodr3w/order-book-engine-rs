@@ -66,11 +66,21 @@ cargo build --release
 
 Run the Server
 
+**server only**
+
 Launch HTTP & WS server with a ParityDB store at ./trade_store:
 
 ```
-cargo run --release -- --store-path ./trade_store
+cargo run --release -- server 3000
+
 ```
+**Full Simulation (server + market-maker + attacker)**
+
+```
+cargo run --release -- simulate 3000
+
+```
+
 
 Server listens on 0.0.0.0:3000 by default.
 
