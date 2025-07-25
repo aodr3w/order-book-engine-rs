@@ -152,6 +152,7 @@ Query Recent Trades
 
 ```
 curl http://127.0.0.1:3000/trades/BTC-USD
+
 ```
 
 WebSocket API
@@ -163,47 +164,11 @@ websocat ws://127.0.0.1:3000/ws/BTC-USD
 
 ```
 
-CLI Usage
-
-Add a limit order:
-
-```
-cargo run --release -- -- cli add buy limit 1 --price 50
-
-```
-
-Match a market order:
-
-```
-cargo run --release -- -- cli match sell 5
-```
-
-Show the book:
-
-```
-cargo run --release -- -- cli book
-```
-
-Market Maker Bot
-
-Provide two-sided quotes around the mid-price:
-
-```
-cargo run --release -- -- market-maker
-```
-
-Simulation Harness
-
-Stress-test with random market orders:
-
-```
-cargo run --release -- -- simulate --run-secs 10 --attack-rate-hz 5
-```
-
 Benchmarking
 
 ```
 cargo bench
+
 ```
 
 License
