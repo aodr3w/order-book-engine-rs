@@ -67,7 +67,7 @@ git clone git@github.com:aodr3w/order-book-engine-rs.git
 **http**
 
 ```
-git clone https://github.com/aodr3w/order_book-engine-rs.git
+https://github.com/aodr3w/order-book-engine-rs.git
 
 ```
 
