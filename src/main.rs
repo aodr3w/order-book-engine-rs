@@ -21,11 +21,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Simulate { port: i32 },
+    Simulate { port: i32, secs: i32 },
     Server { port: i32 },
 }
 
-async fn run_simulation(api_base: String) -> anyhow::Result<Vec<JoinHandle<()>>> {
+async fn run_simulation(api_base: String, secs: u64) -> anyhow::Result<Vec<JoinHandle<()>>> {
     // Seed the book with a resting bid @48 and ask @52
     let client = reqwest::Client::new();
     for (side, price) in &[("Buy", 48), ("Sell", 52)] {
@@ -41,7 +41,7 @@ async fn run_simulation(api_base: String) -> anyhow::Result<Vec<JoinHandle<()>>>
             .send()
             .await?
             .error_for_status()?;
-        tracing::info!(side, price, "seeded resting order");
+        tracing::info!(side, price, "seeded resting orders");
     }
 
     // Spawn the market maker
@@ -56,7 +56,7 @@ async fn run_simulation(api_base: String) -> anyhow::Result<Vec<JoinHandle<()>>>
     // Spawn the attacker simulation
     let sim_cfg = simulate::SimConfig {
         api_base,
-        run_secs: 10,
+        run_secs: if secs == 0_u64 { None } else { Some(secs) },
         attack_rate_hz: 5,
     };
     let sim_handle = tokio::spawn(async move {
@@ -98,9 +98,9 @@ async fn main() -> anyhow::Result<()> {
     let base = "http://127.0.0.1".to_string();
     match cli.command {
         //runs system with market_maker bot && client
-        Commands::Simulate { port } => {
+        Commands::Simulate { port, secs } => {
             let svh = run_server(port).await?;
-            let mut sh = run_simulation(format!("{}:{}", base, port)).await?;
+            let mut sh = run_simulation(format!("{}:{}", base, port), secs as u64).await?;
             sh.push(svh);
             for j in sh {
                 j.await?;

@@ -66,53 +66,91 @@ use crate::instrument::{self, Pair};
 #[derive(Clone)]
 pub struct SimConfig {
     pub api_base: String,
-    pub run_secs: u64,
+    pub run_secs: Option<u64>,
     pub attack_rate_hz: u64,
 }
+pub async fn send_one_order(
+    client: &Client,
+    api_base: &str,
+    iv: &mut i64,
+    pnl: &mut f64,
+) -> anyhow::Result<()> {
+    let side = if rand::rng().random_bool(0.5) {
+        "Buy"
+    } else {
+        "Sell"
+    };
+    //post
+    let resp = client
+        .post(format!("{}/orders", api_base))
+        .json(&json!(
+            {
+                "side": side,
+                "order_type": "Market",
+                "quantity": 1,
+                "symbol": Pair::crypto_usd(instrument::Asset::BTC).code(),
+            }
+        ))
+        .send()
+        .await?
+        .error_for_status()?;
 
-pub async fn run_simulation(cfg: SimConfig) -> anyhow::Result<()> {
-    let client = Client::new();
-    let mut iv = 0i64; //inventory
-    let mut realized_pnl = 0.0f64;
-    let mut attack_int = interval(Duration::from_millis(1000 / cfg.attack_rate_hz));
-    let start = Instant::now();
-
-    while start.elapsed().as_secs() < cfg.run_secs {
-        attack_int.tick().await;
-        //Random side
-        let side = if rand::rng().random_bool(0.5) {
-            "Buy"
-        } else {
-            "Sell"
-        };
-        //Aggressive market order of size=1
-        let resp = client
-            .post(format!("{}/orders", cfg.api_base))
-            .json(&json!({"side": side, "order_type": "Market", "quantity": 1, "symbol": Pair::crypto_usd(instrument::Asset::BTC).code()}))
-            .send()
-            .await?;
-        let ack: serde_json::Value = resp.json().await?;
-        //if we got a trade , record inventory & pnl
-        if let Some(trades) = ack.get("trades").and_then(|t| t.as_array()) {
-            for tr in trades {
-                let price = tr.get("price").unwrap().as_f64().unwrap();
-                let qty = tr.get("quantity").unwrap().as_f64().unwrap();
-                //MM was maker if we hit its quote
-                if side == "Buy" {
-                    // you bought → MM sold
-                    iv -= qty as i64;
-                    realized_pnl += price * qty;
-                } else {
-                    // you sold → MM bought
-                    iv += qty as i64;
-                    realized_pnl -= price * qty;
-                }
+    let ack = resp.json::<serde_json::Value>().await?;
+    //update metrics
+    if let Some(trades) = ack.get("trades").and_then(|t| t.as_array()) {
+        for tr in trades {
+            let price = tr["price"].as_f64().unwrap();
+            let qty = tr["quantity"].as_f64().unwrap();
+            //metrics for our market-maker
+            if side == "Buy" {
+                //mm's inventory drops
+                *iv -= qty as i64;
+                *pnl += price * qty;
+            } else {
+                //mm's inventory goes up and pnl goes down
+                *iv += qty as i64;
+                *pnl -= price * qty;
             }
         }
     }
-
+    Ok(())
+}
+pub async fn run_simulation(cfg: SimConfig) -> anyhow::Result<()> {
+    let client = Client::new();
+    let mut iv = 0i64; //inventory
+    //ticker for pacing
+    let mut ticker = interval(Duration::from_millis(1000 / cfg.attack_rate_hz));
+    let mut realized_pnl = 0.0f64;
+    //pin signal feature to singal thread
+    let sigint = tokio::signal::ctrl_c();
+    tokio::pin!(sigint);
+    let start = Instant::now();
+    loop {
+        tokio::select! {
+            //your paced tick
+            _ = ticker.tick() => {
+                if let Some(max_secs) = cfg.run_secs {
+                    if start.elapsed().as_secs() >= max_secs {
+                        break;
+                    }
+                }
+            send_one_order(
+                &client,
+                &cfg.api_base,
+                &mut iv,
+                &mut realized_pnl
+            ).await?;
+            }
+            //handle termination signal
+            _ = &mut sigint  => {
+                tracing::info!("👍 caught Ctrl-C, exiting simulation…");
+                break
+            }
+        }
+    }
+    // end of loop
     println!("--- Simulation complete ---");
-    println!("Realized P&L: {:.4}", realized_pnl);
-    println!("Ending Inv.:  {}", iv);
+    println!("Final inventory: {}", iv);
+    println!("Final realized P&L: {:.4}", realized_pnl);
     Ok(())
 }
