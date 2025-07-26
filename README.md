@@ -1,6 +1,6 @@
 Order Book Engine
 
-A high-performance, Rust-based limit order book engine with REST and WebSocket APIs, in-memory matching, persistent trade storage via ParityDB, a market maker bot, and a simulation harness for stress-testing and benchmarking.
+A Rust-based limit order book engine with REST and WebSocket APIs, in-memory matching, persistent trade storage via ParityDB, a market maker bot, and a simulation harness for stress-testing and benchmarking.
 
 Features
 
