@@ -58,10 +58,23 @@ Getting Started
 
 Clone & build:
 
+**ssh**
+
+```
+git clone git@github.com:aodr3w/order-book-engine-rs.git
+
+```
+**http**
+
 ```
 git clone https://github.com/aodr3w/order_book-engine-rs.git
-cd order_book-engine-rs
+
+```
+
+```
+cd order-book-engine-rs
 cargo build --release
+
 ```
 
 Run the Server
