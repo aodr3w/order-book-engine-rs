@@ -8,3 +8,4 @@ pub mod simulate;
 pub mod state;
 pub mod store;
 pub mod trade;
+pub mod utils;

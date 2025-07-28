@@ -5,6 +5,7 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::watch, time};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMsg};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     api::{OrderAck, WsFrame},
@@ -94,7 +95,11 @@ struct NewOrder {
 ///
 /// Errors from the WebSocket connection or HTTP client are wrapped in
 /// `MarketMakerError` for upstream handling.
-pub async fn run_market_maker(api_base: &str, target_pair: Pair) -> Result<(), MarketMakerError> {
+pub async fn run_market_maker(
+    api_base: &str,
+    target_pair: Pair,
+    token: CancellationToken,
+) -> Result<(), MarketMakerError> {
     //use pair-specific websocket URL
     let ws_url = format!(
         "ws://{host}/ws/{pair}",
@@ -151,59 +156,67 @@ pub async fn run_market_maker(api_base: &str, target_pair: Pair) -> Result<(), M
     let mut interval = time::interval(time::Duration::from_millis(PACE_MS));
     let mut last_mid = None;
     loop {
-        interval.tick().await;
+        tokio::select! {
+                //cancellation wins instantly
+                _ = token.cancelled() => {
+                    tracing::info!("market makerL shutdown requested, tearing down...");
+                    break;
+                }
+                _ = interval.tick() => {
+                            // Only quote once we have a mid-price
 
-        // Only quote once we have a mid-price
-
-        let mid_opt: Option<u64> = *mid_rx.borrow();
-        if let Some(mid_price) = mid_opt {
-            if Some(mid_price) != last_mid {
-                //market has moved, cancel & place new orders, and update mid price
-                // Cancel all previous orders
-                for id in outstanding.drain(..) {
-                    let _ = client
-                        .delete(format!("{}/orders/{}/{}", api_base, target_pair.code(), id))
+            let mid_opt: Option<u64> = *mid_rx.borrow();
+            if let Some(mid_price) = mid_opt {
+                if Some(mid_price) != last_mid {
+                    //market has moved, cancel & place new orders, and update mid price
+                    // Cancel all previous orders
+                    for id in outstanding.drain(..) {
+                        let _ = client
+                            .delete(format!("{}/orders/{}/{}", api_base, target_pair.code(), id))
+                            .send()
+                            .await;
+                    }
+                    tracing::info!(bid_price = mid_price.saturating_sub(SPREAD), "placing bid");
+                    // Post a new bid
+                    if let Ok(resp) = client
+                        .post(format!("{}/orders", api_base))
+                        .json(&NewOrder {
+                            side: Side::Buy,
+                            order_type: OrderType::Limit,
+                            price: Some(mid_price.saturating_sub(SPREAD)),
+                            quantity: 1,
+                            pair: target_pair.clone(),
+                        })
                         .send()
-                        .await;
-                }
-                tracing::info!(bid_price = mid_price.saturating_sub(SPREAD), "placing bid");
-                // Post a new bid
-                if let Ok(resp) = client
-                    .post(format!("{}/orders", api_base))
-                    .json(&NewOrder {
-                        side: Side::Buy,
-                        order_type: OrderType::Limit,
-                        price: Some(mid_price.saturating_sub(SPREAD)),
-                        quantity: 1,
-                        pair: target_pair.clone(),
-                    })
-                    .send()
-                    .await
-                {
-                    if let Ok(ack) = resp.json::<OrderAck>().await {
-                        outstanding.push(ack.order_id);
+                        .await
+                    {
+                        if let Ok(ack) = resp.json::<OrderAck>().await {
+                            outstanding.push(ack.order_id);
+                        }
                     }
-                }
-                tracing::info!(bid_price = mid_price.saturating_add(SPREAD), "placing ask");
-                // Post a new ask
-                if let Ok(resp) = client
-                    .post(format!("{}/orders", api_base))
-                    .json(&NewOrder {
-                        side: Side::Sell,
-                        order_type: OrderType::Limit,
-                        price: Some(mid_price.saturating_add(SPREAD)),
-                        quantity: 1,
-                        pair: target_pair.clone(),
-                    })
-                    .send()
-                    .await
-                {
-                    if let Ok(ack) = resp.json::<OrderAck>().await {
-                        outstanding.push(ack.order_id);
+                    tracing::info!(bid_price = mid_price.saturating_add(SPREAD), "placing ask");
+                    // Post a new ask
+                    if let Ok(resp) = client
+                        .post(format!("{}/orders", api_base))
+                        .json(&NewOrder {
+                            side: Side::Sell,
+                            order_type: OrderType::Limit,
+                            price: Some(mid_price.saturating_add(SPREAD)),
+                            quantity: 1,
+                            pair: target_pair.clone(),
+                        })
+                        .send()
+                        .await
+                    {
+                        if let Ok(ack) = resp.json::<OrderAck>().await {
+                            outstanding.push(ack.order_id);
+                        }
                     }
+                    last_mid = Some(mid_price);
                 }
-                last_mid = Some(mid_price);
             }
         }
+                }
     }
+    Ok(())
 }

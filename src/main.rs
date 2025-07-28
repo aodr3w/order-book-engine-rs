@@ -1,9 +1,11 @@
+use axum::Router;
 use clap::{Parser, Subcommand};
 use order_book_engine::instrument::Pair;
+use order_book_engine::utils::shutdown_token;
 use order_book_engine::{api, instrument, market_maker, simulate, state::AppState};
 use serde_json::json;
 use std::path::Path;
-use tokio::task::JoinHandle;
+use tokio::net::TcpListener;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -21,11 +23,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Simulate { port: i32, secs: i32 },
-    Server { port: i32 },
+    Simulate { port: u16, secs: u64 },
+    Server { port: u16 },
 }
 
-async fn run_simulation(api_base: String, secs: u64) -> anyhow::Result<Vec<JoinHandle<()>>> {
+async fn seed_book(api_base: String) -> anyhow::Result<()> {
     // Seed the book with a resting bid @48 and ask @52
     let client = reqwest::Client::new();
     for (side, price) in &[("Buy", 48), ("Sell", 52)] {
@@ -43,50 +45,23 @@ async fn run_simulation(api_base: String, secs: u64) -> anyhow::Result<Vec<JoinH
             .error_for_status()?;
         tracing::info!(side, price, "seeded resting orders");
     }
-
-    // Spawn the market maker
-    let pair = Pair::crypto_usd(instrument::Asset::BTC);
-    let b = api_base.clone();
-    let mm_handler = tokio::spawn(async move {
-        if let Err(e) = market_maker::run_market_maker(&b, pair).await {
-            tracing::error!("Market maker exited: {:?}", e);
-        }
-    });
-
-    // Spawn the attacker simulation
-    let sim_cfg = simulate::SimConfig {
-        api_base,
-        run_secs: if secs == 0_u64 { None } else { Some(secs) },
-        attack_rate_hz: 5,
-    };
-    let sim_handle = tokio::spawn(async move {
-        if let Err(e) = simulate::run_simulation(sim_cfg).await {
-            tracing::error!("Simulation error: {:?}", e);
-        }
-    });
-    Ok(vec![sim_handle, mm_handler])
+    Ok(())
 }
 
-async fn run_server(port: i32) -> anyhow::Result<JoinHandle<()>> {
-    // Launch our Axum server in the background
+async fn get_app_listener(port: u16) -> anyhow::Result<(TcpListener, Router)> {
     let state = AppState::new(Path::new("trade_store")).await.unwrap();
     let app = api::router(state.clone());
     let ep = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(ep.clone()).await?;
-    let server_handle = tokio::spawn(async move {
-        tracing::info!("HTTP/WS server listening on {}", ep);
-        // this will serve forever
-        axum::serve(listener, app).await.unwrap();
-    });
-
-    // small delay to let the server finish its bind
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-    Ok(server_handle)
+    Ok((listener, app))
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let token = shutdown_token();
+    let server_token = token.clone();
+    let mm_token = token.clone();
+    let sim_token = token.clone();
     // Setup tracing
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
@@ -99,15 +74,52 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         //runs system with market_maker bot && client
         Commands::Simulate { port, secs } => {
-            let svh = run_server(port).await?;
-            let mut sh = run_simulation(format!("{}:{}", base, port), secs as u64).await?;
-            sh.push(svh);
-            for j in sh {
-                j.await?;
-            }
+            let mut handlers = tokio::task::JoinSet::new();
+            let (listener, app) = get_app_listener(port).await.unwrap();
+            handlers.spawn(async move {
+                tracing::info!(
+                    "HTTP/WS server listening on {}",
+                    format!("0.0.0.0:{}", port)
+                );
+                // this will serve forever
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(server_token.cancelled_owned())
+                    .await
+                    .unwrap();
+            });
+            seed_book(base.clone()).await.unwrap();
+            let pair = Pair::crypto_usd(instrument::Asset::BTC);
+            //start market maker
+            let mmb = base.clone();
+            handlers.spawn(async move {
+                if let Err(e) = market_maker::run_market_maker(&mmb, pair, mm_token).await {
+                    tracing::error!("Market maker exited: {:?}", e);
+                }
+            });
+            //start simulator
+            handlers.spawn(async move {
+                if let Err(e) = simulate::run_simulation(
+                    simulate::SimConfig {
+                        api_base: base,
+                        run_secs: if secs == 0 { None } else { Some(secs) },
+                        attack_rate_hz: 5,
+                    },
+                    sim_token,
+                )
+                .await
+                {
+                    tracing::error!("Simulation error: {:?}", e);
+                }
+            });
+            handlers.join_all().await;
         }
         Commands::Server { port } => {
-            let svh = run_server(port).await?;
+            let svh = tokio::spawn(async move {
+                tracing::info!(
+                    "HTTP/WS server listening on {}",
+                    format!("0.0.0.0:{}", port)
+                );
+            });
             svh.await?;
         }
     };

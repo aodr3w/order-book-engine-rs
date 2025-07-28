@@ -60,6 +60,7 @@ use reqwest::Client;
 use serde_json::json;
 use std::time::{Duration, Instant};
 use tokio::time::interval;
+use tokio_util::sync::CancellationToken;
 
 use crate::instrument::{self, Pair};
 
@@ -115,15 +116,15 @@ pub async fn send_one_order(
     }
     Ok(())
 }
-pub async fn run_simulation(cfg: SimConfig) -> anyhow::Result<()> {
+pub async fn run_simulation(cfg: SimConfig, token: CancellationToken) -> anyhow::Result<()> {
     let client = Client::new();
     let mut iv = 0i64; //inventory
     //ticker for pacing
     let mut ticker = interval(Duration::from_millis(1000 / cfg.attack_rate_hz));
     let mut realized_pnl = 0.0f64;
-    //pin signal feature to singal thread
-    let sigint = tokio::signal::ctrl_c();
-    tokio::pin!(sigint);
+    // //pin signal feature to singal thread
+    // let sigint = tokio::signal::ctrl_c();
+    // tokio::pin!(sigint);
     let start = Instant::now();
     loop {
         tokio::select! {
@@ -142,7 +143,7 @@ pub async fn run_simulation(cfg: SimConfig) -> anyhow::Result<()> {
             ).await?;
             }
             //handle termination signal
-            _ = &mut sigint  => {
+            _ = token.cancelled()  => {
                 tracing::info!("👍 caught Ctrl-C, exiting simulation…");
                 break
             }
