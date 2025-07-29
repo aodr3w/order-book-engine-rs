@@ -48,9 +48,8 @@ async fn seed_book(api_base: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn get_app_listener(port: u16) -> anyhow::Result<(TcpListener, Router)> {
-    let state = AppState::new(Path::new("trade_store")).await.unwrap();
-    let app = api::router(state.clone());
+async fn get_app_listener(port: u16, state: AppState) -> anyhow::Result<(TcpListener, Router)> {
+    let app = api::router(state);
     let ep = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(ep.clone()).await?;
     Ok((listener, app))
@@ -58,6 +57,7 @@ async fn get_app_listener(port: u16) -> anyhow::Result<(TcpListener, Router)> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let state = AppState::new(Path::new("trade_store")).await.unwrap();
     let token = shutdown_token();
     let server_token = token.clone();
     let mm_token = token.clone();
@@ -75,7 +75,7 @@ async fn main() -> anyhow::Result<()> {
         //runs system with market_maker bot && client
         Commands::Simulate { port, secs } => {
             let mut handlers = tokio::task::JoinSet::new();
-            let (listener, app) = get_app_listener(port).await.unwrap();
+            let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
             handlers.spawn(async move {
                 tracing::info!(
                     "HTTP/WS server listening on {}",
@@ -114,11 +114,16 @@ async fn main() -> anyhow::Result<()> {
             handlers.join_all().await;
         }
         Commands::Server { port } => {
+            let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
             let svh = tokio::spawn(async move {
                 tracing::info!(
                     "HTTP/WS server listening on {}",
                     format!("0.0.0.0:{}", port)
                 );
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(server_token.cancelled_owned())
+                    .await
+                    .unwrap();
             });
             svh.await?;
         }
