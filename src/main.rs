@@ -113,16 +113,18 @@ async fn main() -> anyhow::Result<()> {
             seed_book(&ep).await.unwrap();
             let pair = Pair::crypto_usd(instrument::Asset::BTC);
             //start market maker
+            let mm = ep.clone();
             handlers.spawn(async move {
-                if let Err(e) = market_maker::run_market_maker(&ep, pair, mm_token).await {
+                if let Err(e) = market_maker::run_market_maker(&mm, pair, mm_token).await {
                     tracing::error!("Market maker exited: {:?}", e);
                 }
             });
             //start simulator
+            let sm = ep.clone();
             handlers.spawn(async move {
                 if let Err(e) = simulate::run_simulation(
                     simulate::SimConfig {
-                        api_base: base,
+                        api_base: sm,
                         run_secs: if secs == 0 { None } else { Some(secs) },
                         attack_rate_hz: 5,
                     },
