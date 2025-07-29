@@ -1,10 +1,11 @@
 use axum::Router;
 use clap::{Parser, Subcommand};
-use order_book_engine::instrument::Pair;
+use order_book_engine::instrument::{Asset, Pair};
 use order_book_engine::utils::shutdown_token;
 use order_book_engine::{api, instrument, market_maker, simulate, state::AppState};
 use serde_json::json;
 use std::path::Path;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
@@ -27,12 +28,30 @@ enum Commands {
     Server { port: u16 },
 }
 
-async fn seed_book(api_base: String) -> anyhow::Result<()> {
+async fn wait_for_server(api_base: &str) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    loop {
+        match client
+            .get(format!(
+                "{}/book/{}",
+                api_base,
+                Pair::crypto_usd(Asset::BTC).code()
+            ))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => break,
+            _ => tokio::time::sleep(Duration::from_millis(25)).await,
+        };
+    }
+    Ok(())
+}
+async fn seed_book(ep: &str) -> anyhow::Result<()> {
     // Seed the book with a resting bid @48 and ask @52
     let client = reqwest::Client::new();
     for (side, price) in &[("Buy", 48), ("Sell", 52)] {
         client
-            .post(format!("{}/orders", api_base))
+            .post(format!("{}/orders", ep))
             .json(&json!({
                 "side": side,
                 "order_type": "Limit",
@@ -76,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Simulate { port, secs } => {
             let mut handlers = tokio::task::JoinSet::new();
             let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
+            tracing::warn!("spawning the server task, port: {}, {}", port, secs);
             handlers.spawn(async move {
                 tracing::info!(
                     "HTTP/WS server listening on {}",
@@ -87,7 +107,10 @@ async fn main() -> anyhow::Result<()> {
                     .await
                     .unwrap();
             });
-            seed_book(base.clone()).await.unwrap();
+            let ep = format!("{}:{}", base.clone(), port);
+            tracing::info!("end_point: {}", ep);
+            wait_for_server(&ep).await?;
+            seed_book(&ep).await.unwrap();
             let pair = Pair::crypto_usd(instrument::Asset::BTC);
             //start market maker
             let mmb = base.clone();
