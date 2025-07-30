@@ -126,7 +126,9 @@ async fn main() -> anyhow::Result<()> {
                     simulate::SimConfig {
                         api_base: sm,
                         run_secs: if secs == 0 { None } else { Some(secs) },
-                        attack_rate_hz: 5,
+                        noise_sigma: 0.5,
+                        mean_qty: 5.0,
+                        attack_rate_hz: 5_f64,
                     },
                     sim_token,
                 )

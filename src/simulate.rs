@@ -56,10 +56,11 @@
 //!   as `±price` per trade with no need for aggregation or partial‐fill logic.
 
 use rand::Rng;
+use rand_distr::{Distribution, Exp, Exp1, Normal};
 use reqwest::Client;
 use serde_json::json;
 use std::time::{Duration, Instant};
-use tokio::time::interval;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::instrument::{self, Pair};
@@ -68,7 +69,9 @@ use crate::instrument::{self, Pair};
 pub struct SimConfig {
     pub api_base: String,
     pub run_secs: Option<u64>,
-    pub attack_rate_hz: u64,
+    pub attack_rate_hz: f64,
+    pub noise_sigma: f64,
+    pub mean_qty: f64,
 }
 pub async fn send_one_order(
     client: &Client,
@@ -116,39 +119,89 @@ pub async fn send_one_order(
     }
     Ok(())
 }
-pub async fn run_simulation(cfg: SimConfig, token: CancellationToken) -> anyhow::Result<()> {
+
+pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> anyhow::Result<()> {
     let client = Client::new();
-    let mut iv = 0i64; //inventory
-    //ticker for pacing
-    let mut ticker = interval(Duration::from_millis(1000 / cfg.attack_rate_hz));
-    let mut realized_pnl = 0.0f64;
+    //1) Exponential inter-arrival times with rate = attack_rate_hz
+    let ia_dist = Exp::new(cfg.attack_rate_hz).expect("attack_rate_hz must be > 0");
+
+    //2 Gaussian drift on the mid-price
+    let drift = Normal::new(0.0, cfg.noise_sigma).expect("noise sigma >= 0");
+
+    //3 unit expontential for sizing
+    let size_dist = Exp1;
+
+    let mut iv = 0i64;
+    let mut pnl = 0.0f64;
+    let mut mid_price = 50.0;
     let start = Instant::now();
+
     loop {
-        tokio::select! {
-            //your paced tick
-            _ = ticker.tick() => {
-                if let Some(max_secs) = cfg.run_secs {
-                    if start.elapsed().as_secs() >= max_secs {
-                        break;
-                    }
-                }
-            send_one_order(
-                &client,
-                &cfg.api_base,
-                &mut iv,
-                &mut realized_pnl
-            ).await?;
-            }
-            //handle termination signal
-            _ = token.cancelled()  => {
-                tracing::info!("👍 caught Ctrl-C, exiting simulation…");
-                break
+        //check overall time-limit
+        if let Some(max_secs) = cfg.run_secs {
+            if start.elapsed().as_secs() >= max_secs {
+                break;
             }
         }
+        //draw the next wait
+        let wait_secs = ia_dist.sample(&mut rand::rng());
+        let sleep_fut = sleep(Duration::from_secs_f64(wait_secs));
+        tokio::select! {
+                //user hits ctrl-c
+        _ = cancel_token.cancelled() => {
+                    tracing::info!("👍 received shutdown, exiting noisy sim…");
+                break;
+                }
+        // our dynamically-drawn elapsed
+        _ = sleep_fut => {
+            // 4) Send the market order
+            let raw: f64 = <Exp1 as Distribution<f64>>::sample(&size_dist, &mut rand::rng());
+            let qty = raw * cfg.mean_qty;
+            //drift mid price
+            mid_price += drift.sample(&mut rand::rng());
+            // now place a limit order around that drifted price ± spread
+            let spread = 1.0;
+            let (price, side) = if rand::rng().random_bool(0.5) {
+                (mid_price - spread, "Buy")
+            } else {
+                (mid_price + spread, "Sell")
+            };
+            let resp = client.post(format!("{}/orders", cfg.api_base))
+                  .json(&json!({
+                      "side": side,
+                      "order_type": "Limit",
+                      "price": price as u64,
+                      "quantity": qty as u64,
+                      "symbol": "BTC-USD",
+                  }))
+              .send()
+                .await?
+                .error_for_status()?
+                .json::<serde_json::Value>()
+                .await?;
+            // 6) Update P&L & inventory
+            if let Some(trades) = resp.get("trades").and_then(|t| t.as_array()) {
+                for tr in trades {
+                    let price = tr["price"].as_f64().unwrap();
+                    let q     = tr["quantity"].as_f64().unwrap();
+                    if side == "Buy" {
+                        iv  -= q as i64;
+                        pnl += price * q;
+                    } else {
+                        iv  += q as i64;
+                        pnl -= price * q;
+                    }
+                }
+            }
+
+            println!(
+                "[{:.1}s] side={} qty={:.2} mid={:.2} inv={} pnl={:.2}",
+                start.elapsed().as_secs_f64(),
+                side, qty, mid_price, iv, pnl
+            );
+                }
+            }
     }
-    // end of loop
-    println!("--- Simulation complete ---");
-    println!("Final inventory: {}", iv);
-    println!("Final realized P&L: {:.4}", realized_pnl);
+    println!("--- done --- final inv={} final pnl={:.2}", iv, pnl);
     Ok(())
 }
