@@ -122,9 +122,6 @@ pub async fn run_simulation(cfg: SimConfig, token: CancellationToken) -> anyhow:
     //ticker for pacing
     let mut ticker = interval(Duration::from_millis(1000 / cfg.attack_rate_hz));
     let mut realized_pnl = 0.0f64;
-    // //pin signal feature to singal thread
-    // let sigint = tokio::signal::ctrl_c();
-    // tokio::pin!(sigint);
     let start = Instant::now();
     loop {
         tokio::select! {
