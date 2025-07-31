@@ -120,6 +120,30 @@ pub async fn send_one_order(
     Ok(())
 }
 
+/// Drive a “noisy” adversarial simulation against the order-book engine.
+///
+/// Spawns a background task that:
+/// 1. Draws inter-arrival delays from an Exponential(rate = `cfg.attack_rate_hz`), modelling
+///    a Poisson stream of incoming orders.
+/// 2. On each “tick”:
+///    - Draws a random order size by sampling `Exp1 * cfg.mean_qty`.
+///    - Applies Gaussian drift `N(0, cfg.noise_sigma)` to a local `mid_price`.
+///    - Places a **Limit** order at `mid_price ± spread` (you can adjust spread).
+///    - Parses any fills in the engine’s response, updating P&L and inventory counters.
+/// 3. Stops after `cfg.run_secs` elapse (if set), or immediately if the provided
+///    `cancel_token` is triggered (e.g. on Ctrl–C).
+///
+/// # Parameters
+/// - `cfg`: simulation parameters (API endpoint, duration, arrival rate, noise, average size).
+/// - `cancel_token`: a `CancellationToken` whose cancellation immediately terminates the loop.
+///
+/// # Side Effects
+/// Continuously issues HTTP requests against `cfg.api_base`, logging inventory/P&L to stdout.
+/// When the loop exits, prints a final summary.
+///
+/// # Errors
+/// Returns an error if any HTTP request fails or if distribution setup (e.g. negative σ) is invalid.
+///
 pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> anyhow::Result<()> {
     let client = Client::new();
     //1) Exponential inter-arrival times with rate = attack_rate_hz
