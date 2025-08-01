@@ -24,8 +24,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Simulate { port: u16, secs: u64 },
-    Server { port: u16 },
+    Simulate {
+        /// TCP port to bind to
+        port: u16,
+        /// How many seconds to run the sim; omit for unlimited
+        secs: Option<u64>,
+    },
+    Server {
+        port: u16,
+    },
 }
 
 async fn wait_for_server(api_base: &str) -> anyhow::Result<()> {
@@ -93,6 +100,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         //runs system with market_maker bot && client
         Commands::Simulate { port, secs } => {
+            let secs = secs.unwrap_or_default();
             let mut handlers = tokio::task::JoinSet::new();
             let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
             tracing::warn!("spawning the server task, port: {}, {}", port, secs);

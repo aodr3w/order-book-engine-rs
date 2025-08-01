@@ -89,11 +89,19 @@ cargo run --release -- server 3000
 ```
 **Full Simulation (server + market-maker + attacker)**
 
+# Run indefinitely (hit Ctrl+C to stop)
+
 ```
-cargo run --release -- simulate 3000
+cargo run --release -- simulate <PORT>
 
 ```
 
+# Run for a fixed duration (in seconds)
+
+```
+cargo run --release -- simulate <PORT> <SECS>
+
+```
 
 Server listens on 0.0.0.0:3000 by default.
 
