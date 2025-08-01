@@ -25,7 +25,7 @@ Features
 Prerequisites
 
 	•	Rust (1.70+)
- 
+
 	•	Cargo
  
 	•	gnuplot (for Criterion plots, or use plotters fallback)
@@ -35,7 +35,6 @@ Prerequisites
 Repository Layout
 
 ```
-
 ├── benches/benchmark.rs      # Criterion benchmarks
 ├── src/
 │   ├── api.rs                # HTTP & WS handlers
@@ -51,7 +50,6 @@ Repository Layout
 │   ├── errors.rs             # Error types
 │   └── main.rs               # Entry point
 └── README.md
-
 ```
 
 Getting Started
@@ -62,19 +60,17 @@ Clone & build:
 
 ```
 git clone git@github.com:aodr3w/order-book-engine-rs.git
-
 ```
 **http**
 
 ```
 https://github.com/aodr3w/order-book-engine-rs.git
-
 ```
 
 ```
 cd order-book-engine-rs
-cargo build --release
 
+cargo build --release
 ```
 
 Run the Server
@@ -85,29 +81,20 @@ Launch HTTP & WS server with a ParityDB store at ./trade_store:
 
 ```
 cargo run --release -- server 3000
-
 ```
 **Full Simulation (server + market-maker + attacker)**
 
-# Run indefinitely (hit Ctrl+C to stop)
+Run indefinitely (hit Ctrl+C to stop).
 
 ```
 cargo run --release -- simulate <PORT>
-
 ```
 
-# Run for a fixed duration (in seconds)
+Run for a fixed duration (in seconds).
 
 ```
 cargo run --release -- simulate <PORT> <SECS>
-
 ```
-
-Server listens on 0.0.0.0:3000 by default.
-
-Environment variables:
-
-	•	RUST_LOG – enable tracing (e.g. export RUST_LOG=trace).
 
 REST API
 
@@ -142,10 +129,9 @@ curl -X POST http://127.0.0.1:3000/orders \
      -d '{
        "side": "Sell",
        "order_type": "Market",
-       "quantity": 5,
+       "quantity": 5,xr
        "symbol": "BTC-USD"
      }'
-
 ```
 
 Response:
@@ -158,7 +144,6 @@ Response:
     { "price": 52, "quantity": 5, "maker_id": 67890, "taker_id": 12346, "timestamp": {...}, "symbol": "BTC-USD" }
   ]
 }
-
 ```
 
 Query the Book
@@ -166,14 +151,12 @@ Query the Book
 
 ```
 curl http://127.0.0.1:3000/book/BTC-USD
-
 ```
 
 Query Recent Trades
 
 ```
 curl http://127.0.0.1:3000/trades/BTC-USD
-
 ```
 
 WebSocket API
@@ -182,14 +165,12 @@ Stream live updates (snapshots & trades):
 
 ```
 websocat ws://127.0.0.1:3000/ws/BTC-USD
-
 ```
 
 Benchmarking
 
 ```
 cargo bench
-
 ```
 
 License
