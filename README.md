@@ -80,7 +80,8 @@ Run the Server
 Launch HTTP & WS server with a ParityDB store at ./trade_store:
 
 ```
-cargo run --release -- server 3000
+cargo run --release -- serve 3000
+
 ```
 **Full Simulation (server + market-maker + attacker)**
 

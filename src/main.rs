@@ -30,7 +30,7 @@ enum Commands {
         /// How many seconds to run the sim; omit for unlimited
         secs: Option<u64>,
     },
-    Server {
+    Serve {
         port: u16,
     },
 }
@@ -147,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
             });
             handlers.join_all().await;
         }
-        Commands::Server { port } => {
+        Commands::Serve { port } => {
             let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
             let svh = tokio::spawn(async move {
                 tracing::info!(
