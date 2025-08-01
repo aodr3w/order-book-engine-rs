@@ -85,16 +85,16 @@ cargo run --release -- serve 3000
 ```
 **Full Simulation (server + market-maker + attacker)**
 
-Run indefinitely (hit Ctrl+C to stop).
+Specify port only to run indefinitely (hit Ctrl+C to stop).
 
 ```
-cargo run --release -- simulate <PORT>
+cargo run --release -- simulate 3000
 ```
 
-Run for a fixed duration (in seconds).
+Specify both port and seconds to run for a fixed duration
 
 ```
-cargo run --release -- simulate <PORT> <SECS>
+cargo run --release -- simulate 3000 5
 ```
 
 REST API
