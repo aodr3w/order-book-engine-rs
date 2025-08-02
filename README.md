@@ -120,7 +120,7 @@ curl -X POST http://127.0.0.1:3000/orders \
      -d '{
        "side": "Sell",
        "order_type": "Market",
-       "quantity": 5,xr
+       "quantity": 5,
        "symbol": "BTC-USD"
      }'
 ```
