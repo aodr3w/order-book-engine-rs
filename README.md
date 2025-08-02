@@ -1,6 +1,6 @@
 # Order Book Engine
 
-A high-performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, and built-in market-making & benchmarking.
+A high-performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, built-in market-making and benchmarking.
 
 ## Features
 
@@ -88,7 +88,7 @@ Specify both port and seconds to run for a fixed duration
 cargo run --release -- simulate 3000 5
 ```
 
-# EXAMPLES
+## EXAMPLES
 
 ## Rest API
 
