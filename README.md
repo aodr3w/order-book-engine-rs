@@ -4,7 +4,7 @@ A high-performance matching engine for multiple trading pairs, with REST & WebSo
 
 ## Features
 
-- **Limit & Market Orders:** FIFO, price-time priority, partial fills, and crossing.  
+- **Limit & Market Orders:** FIFO, price-time priority, partial fills, and crossing.
 - **In-Memory Books:** One order-book per trading pair (e.g. BTC-USD, ETH-USD), backed by a `BTreeMap` of price levels with `VecDeque` queues for orders.  
 - **Persistence:** Trades serialized with Bincode and stored in ParityDB for durable, per-pair history.  
 - **REST API:** Submit orders, query order book & trade history.  
@@ -45,7 +45,7 @@ A high-performance matching engine for multiple trading pairs, with REST & WebSo
 
 # Getting Started
 
-## Clone & build:
+### Clone & build
 
 **ssh**
 
@@ -64,7 +64,7 @@ cd order-book-engine-rs
 cargo build --release
 ```
 
-## Run the Server
+### Run the Server
 
 **server only**
 
@@ -72,7 +72,6 @@ Launch HTTP & WS server with a ParityDB store at ./trade_store:
 
 ```
 cargo run --release -- serve 3000
-
 ```
 **Full Simulation (server + market-maker + attacker)**
 
@@ -89,8 +88,6 @@ cargo run --release -- simulate 3000 5
 ```
 
 ## EXAMPLES
-
-## Rest API
 
 ### Submit a Limit Order
 
@@ -153,9 +150,7 @@ curl http://127.0.0.1:3000/book/BTC-USD
 curl http://127.0.0.1:3000/trades/BTC-USD
 ```
 
-### WebSocket API
-
-Stream live updates (snapshots & trades):
+### Stream live updates (snapshots & trades):
 
 ```
 websocat ws://127.0.0.1:3000/ws/BTC-USD
@@ -167,6 +162,6 @@ websocat ws://127.0.0.1:3000/ws/BTC-USD
 cargo bench
 ```
 
-# License
+### License
 
 MIT
