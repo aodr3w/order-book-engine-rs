@@ -1,36 +1,25 @@
-Order Book Engine
+# Order Book Engine
 
-A Rust-based limit order book engine with REST and WebSocket APIs, in-memory matching, persistent trade storage via ParityDB, a market maker bot, and a simulation harness for stress-testing and benchmarking.
+A high-performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, and built-in bots and benchmarking.
 
-Features
+## Features
 
-- Limit & Market Orders: FIFO, price-time priority, partial fills, and crossing.
+- **Limit & Market Orders:** FIFO, price-time priority, partial fills, and crossing.  
+- **In-Memory Books:** One order-book per trading pair (e.g. BTC-USD, ETH-USD), backed by a `BTreeMap` of price levels with `VecDeque` queues for orders.  
+- **Persistence:** Trades serialized with Bincode and stored in ParityDB for durable, per-pair history.  
+- **REST API:** Submit orders, query order book & trade history.  
+- **WebSocket API:** Stream live book snapshots and trade events.  
+- **Market Maker Bot:** Two-sided quoting around mid-price via REST+WS.  
+- **Simulation Harness:** Adversarial load testing with random market orders.  
+- **CLI Tool:** Command-line interface for manual interaction.  
+- **Benchmarking:** Criterion benchmarks for matching performance.  
 
-- **In-Memory Books:** One order-book per trading pair (e.g. BTC-USD, ETH-USD), backed by a BTreeMap of price levels with VecDeque queues for orders.
+## Prerequisites
 
-- Persistence: Trades serialized with Bincode and stored in ParityDB.
-
-- REST API: Submit orders, query order book & trade history.
-
-- WebSocket API: Stream live book snapshots and trade events.
-
-- Market Maker Bot: Two-sided quoting around mid-price via REST+WS.
-
-- Simulation Harness: Adversarial load testing with random market orders.
-
-- CLI Tool: Command-line interface for manual interaction.
-
-- Benchmarking: Criterion benchmarks for matching performance.
-
-Prerequisites
-
--	Rust (1.70+)
-
--	Cargo
- 
--	gnuplot (for Criterion plots, or use plotters fallback)
- 
--	Linux/macOS/Windows
+- Rust (1.70+)  
+- Cargo  
+- gnuplot (for Criterion plots, or use plotters fallback)  
+- Linux/macOS/Windows  
 
 Repository Layout
 
