@@ -1,6 +1,6 @@
 # Order Book Engine
 
-A high-performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, and built-in bots and benchmarking.
+A high-performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, and built-in market-making & benchmarking.
 
 ## Features
 
@@ -19,7 +19,9 @@ A high-performance matching engine for multiple trading pairs, with REST & WebSo
 - Rust (1.70+)  
 - Cargo  
 - gnuplot (for Criterion plots, or use plotters fallback)  
-- Linux/macOS/Windows  
+- Linux/macOS/Windows
+
+
 
 Repository Layout
 
