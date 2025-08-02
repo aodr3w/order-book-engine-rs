@@ -24,13 +24,13 @@ Features
 
 Prerequisites
 
-	-	Rust (1.70+)
+-	Rust (1.70+)
 
-	-	Cargo
+-	Cargo
  
-	-	gnuplot (for Criterion plots, or use plotters fallback)
+-	gnuplot (for Criterion plots, or use plotters fallback)
  
-	-	Linux/macOS/Windows
+-	Linux/macOS/Windows
 
 Repository Layout
 
