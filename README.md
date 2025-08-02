@@ -23,7 +23,7 @@ A high-performance matching engine for multiple trading pairs, with REST & WebSo
 
 
 
-Repository Layout
+## Repository Layout
 
 ```
 ├── benches/benchmark.rs      # Criterion benchmarks
@@ -43,9 +43,9 @@ Repository Layout
 └── README.md
 ```
 
-Getting Started
+# Getting Started
 
-Clone & build:
+## Clone & build:
 
 **ssh**
 
@@ -64,7 +64,7 @@ cd order-book-engine-rs
 cargo build --release
 ```
 
-Run the Server
+## Run the Server
 
 **server only**
 
@@ -88,9 +88,11 @@ Specify both port and seconds to run for a fixed duration
 cargo run --release -- simulate 3000 5
 ```
 
-REST API
+# EXAMPLES
 
-Submit a Limit Order
+## Rest API
+
+### Submit a Limit Order
 
 ```
 curl -X POST http://127.0.0.1:3000/orders \
@@ -113,7 +115,7 @@ Response:
 }
 ```
 
-Submit a Market Order
+### Submit a Market Order
 
 ```
 curl -X POST http://127.0.0.1:3000/orders \
@@ -138,20 +140,20 @@ Response:
 }
 ```
 
-Query the Book
+### Query the Book
 
 
 ```
 curl http://127.0.0.1:3000/book/BTC-USD
 ```
 
-Query Recent Trades
+### Query Recent Trades
 
 ```
 curl http://127.0.0.1:3000/trades/BTC-USD
 ```
 
-WebSocket API
+### WebSocket API
 
 Stream live updates (snapshots & trades):
 
@@ -159,12 +161,12 @@ Stream live updates (snapshots & trades):
 websocat ws://127.0.0.1:3000/ws/BTC-USD
 ```
 
-Benchmarking
+### Benchmarking
 
 ```
 cargo bench
 ```
 
-License
+# License
 
 MIT
