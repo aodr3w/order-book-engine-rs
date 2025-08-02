@@ -4,23 +4,23 @@ A Rust-based limit order book engine with REST and WebSocket APIs, in-memory mat
 
 Features
 
-	•	Limit & Market Orders: FIFO, price-time priority, partial fills, and crossing.
- 
-	•	In-Memory Book: Fast matching engine using BTreeMap and VecDeque.
- 
-	•	Persistence: Trades serialized with Bincode and stored in ParityDB.
- 
-	•	REST API: Submit orders, query order book & trade history.
- 
-	•	WebSocket API: Stream live book snapshots and trade events.
- 
-	•	Market Maker Bot: Two-sided quoting around mid-price via REST+WS.
- 
-	•	Simulation Harness: Adversarial load testing with random market orders.
- 
-	•	CLI Tool: Command-line interface for manual interaction.
- 
-	•	Benchmarking: Criterion benchmarks for matching performance.
+- Limit & Market Orders: FIFO, price-time priority, partial fills, and crossing.
+
+- **In-Memory Books:** One order-book per trading pair (e.g. BTC-USD, ETH-USD), backed by a BTreeMap of price levels with VecDeque queues for orders.
+
+- Persistence: Trades serialized with Bincode and stored in ParityDB.
+
+- REST API: Submit orders, query order book & trade history.
+
+- WebSocket API: Stream live book snapshots and trade events.
+
+- Market Maker Bot: Two-sided quoting around mid-price via REST+WS.
+
+- Simulation Harness: Adversarial load testing with random market orders.
+
+- CLI Tool: Command-line interface for manual interaction.
+
+- Benchmarking: Criterion benchmarks for matching performance.
 
 Prerequisites
 
