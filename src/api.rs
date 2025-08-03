@@ -41,11 +41,11 @@ pub struct NewOrder {
     #[serde(rename = "symbol", deserialize_with = "parse_pair")]
     pub pair: Pair,
 }
-fn parse_pair<'de, D>(de: D) -> Result<Pair, D::Error>
+fn parse_pair<'de, D>(deserializer: D) -> Result<Pair, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(de)?;
+    let s = String::deserialize(deserializer)?;
     Pair::from_str(&s).map_err(|_| de::Error::custom(format!("unsupported symbol `{}`", s)))
 }
 #[derive(Serialize, Deserialize)]
