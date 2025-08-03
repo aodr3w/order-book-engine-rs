@@ -31,6 +31,7 @@ use crate::{
 /// - `order_type`: limit or market  
 /// - `price`: limit price (ignored for market)  
 /// - `quantity`: how many units to trade
+/// - `pair`: trading pair, e.g. `"BTC-USD"` or `"ETH-USD"`
 #[derive(serde::Deserialize)]
 pub struct NewOrder {
     pub side: Side,
