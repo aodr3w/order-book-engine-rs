@@ -121,31 +121,36 @@ pub async fn run_market_maker(
         }
     };
 
-    let (_write, mut read) = ws_stream.split();
+    let (_write, read) = ws_stream.split();
 
     // watch channel for mid_price
     let (mid_tx, mid_rx) = watch::channel(None::<u64>);
 
     // 2) Spawn task: parse snapshots → update `mid_tx`
     let v = target_pair.clone();
+
+    let frames = read.filter_map(|msg| async move {
+        match msg {
+            Ok(WsMsg::Text(txt)) => match serde_json::from_str::<WsFrame>(&txt) {
+                Ok(frame) => Some(frame),
+                Err(err) => {
+                    tracing::warn!("invalid WS frame: {err}");
+                    None
+                }
+            },
+            _ => None,
+        }
+    });
     tokio::spawn(async move {
-        while let Some(Ok(WsMsg::Text(txt))) = read.next().await {
-            // Only care about BookSnapshot frames
-            if let Ok(WsFrame::BookSnapshot(BookSnapshot { pair, bids, asks })) =
-                serde_json::from_str::<WsFrame>(&txt)
-            {
+        tokio::pin!(frames);
+        while let Some(frame) = frames.next().await {
+            if let WsFrame::BookSnapshot(BookSnapshot { pair, bids, asks }) = frame {
                 if pair != v {
                     continue;
                 }
-                tracing::info!("snapshot receieved... bids: {:?}, asks: {:?}", bids, asks);
-                if let (Some((best_bid, _)), Some((best_ask, _))) = (bids.first(), asks.first()) {
-                    tracing::info!("updating mid...");
-                    let mid = (best_bid + best_ask) / 2;
-                    let _ = mid_tx.send(Some(mid));
-                }
-            } else {
-                tracing::info!("listening for snapshots...");
-            }
+                let mid = (bids[0].0 + asks[0].0) / 2;
+                let _ = mid_tx.send(Some(mid));
+            };
         }
     });
 
