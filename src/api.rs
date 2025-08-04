@@ -48,11 +48,19 @@ where
     let s = String::deserialize(deserializer)?;
     Pair::from_str(&s).map_err(|_| de::Error::custom(format!("unsupported symbol `{}`", s)))
 }
+/// A websocket message, either a snapshot of the order book or
+/// a single trade event.
+///
+/// Serialized as an internally-tagged enum:
+/// ```
+/// {"type": "BookSnapshot", "data": { /* snapshot fields */}}
+/// {"type": "Trade", "data": { /* trade fields */}}
+/// ```
 #[derive(Serialize, Deserialize)]
-//#[serde(tag = "type", content = "data")]
+#[serde(tag = "type", content = "data")]
 pub enum WsFrame {
-    Trade(Trade),
     BookSnapshot(BookSnapshot),
+    Trade(Trade),
 }
 /// Response for `POST /orders`.
 ///
