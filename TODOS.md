@@ -2,5 +2,3 @@ do we validate order inputs ??
 negative quantities ??
 
 document Command:Server & Command:Simulate
-rename Command::Server to Command:Serve
-
