@@ -71,14 +71,27 @@ pub struct OrderAck {
     pub order_id: u64,
     trades: Vec<Trade>,
 }
-/// `GET /trades`  
-/// *Success:* 200, JSON `Vec<Trade>`
-/// *Failure:* 500 if the database query fails
+
+/// `GET /trades/{pair}`
+///
+/// Returns the historical trades for the given trading pair.
+///
+/// # Path Parameters
+/// - `pair`: Symbol of the trading pair to query (e.g. `"BTC-USD"`, `"ETH-USD"`).
+///
+/// # Success
+/// - `200 OK` with a JSON array of [`Trade`] objects whose `symbol` matches `pair`.
+///
+/// # Errors
+/// - `500 INTERNAL SERVER ERROR` if the trade store cannot be queried.
+///
+/// # TODO
+/// Add pagination support to limit and page through large result sets.
 pub async fn get_trade_log(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Trade>>, StatusCode> {
-    //TODO this needs pagination logic
+    // TODO: paginate results
     let symbol = pair.code().clone();
     let store = state.store.lock().unwrap();
     let trades = store.iter_trades().unwrap();
