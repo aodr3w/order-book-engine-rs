@@ -4,7 +4,10 @@ use bincode::{
 };
 use parity_db::{BTreeIterator, ColId, Db, Options};
 use serde_json;
-use std::{path::Path, time::UNIX_EPOCH};
+use std::{
+    path::Path,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use thiserror::Error;
 
 use crate::trade::Trade;
@@ -44,6 +47,31 @@ impl Store {
         opts.columns[0].btree_index = true;
         let db = Db::open_or_create(&opts)?;
         Ok(Store { db })
+    }
+
+    #[inline]
+    fn to_nanos(ts: SystemTime) -> u128 {
+        ts.duration_since(UNIX_EPOCH).unwrap().as_nanos()
+    }
+
+    #[inline]
+    fn prefix(symbol: &str) -> Vec<u8> {
+        let mut k = Vec::with_capacity(symbol.len() + 1);
+        k.extend_from_slice(symbol.as_bytes());
+        k.push(b':');
+        k
+    }
+
+    #[inline]
+    fn encode_key(symbol: &str, trade: &Trade) -> Vec<u8> {
+        let mut key = Self::prefix(symbol);
+        let ts = Self::to_nanos(trade.timestamp);
+        key.extend_from_slice(&ts.to_be_bytes());
+        key.extend_from_slice(&trade.maker_id.to_be_bytes());
+        key.extend_from_slice(&trade.taker_id.to_be_bytes());
+        key.extend_from_slice(&trade.price.to_be_bytes());
+        key.extend_from_slice(&trade.quantity.to_be_bytes());
+        key
     }
 
     /// Insert a trade into the store under key "{symbol}:{timestamp_ms}".
