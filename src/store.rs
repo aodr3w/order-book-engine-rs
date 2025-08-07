@@ -24,6 +24,9 @@ pub enum StoreError {
 
     #[error("Bincode decode error: {0}")]
     BincodeDecode(#[from] DecodeError),
+
+    #[error("Invalid cursor")]
+    BadCursor,
 }
 
 pub type StoreResult<T> = Result<T, StoreError>;
