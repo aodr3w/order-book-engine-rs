@@ -77,28 +77,33 @@ impl Store {
     /// Insert a trade into the store under key "{symbol}:{timestamp_ms}".
     pub fn insert_trade(&mut self, trade: &Trade) -> StoreResult<()> {
         let config = config::standard();
-        // column 0 for trades
         let col: ColId = 0;
-        let symbol = &trade.symbol;
-        // timestamp in milliseconds since UNIX_EPOCH
-
-        let ts: u64 = trade
-            .timestamp
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock before UNIX_EPOCH")
-            .as_millis() as u64;
-        // build key = symbol + ':' + big-endian timestamp
-        let mut key = Vec::with_capacity(symbol.len() + 1 + 8);
-        key.extend(symbol.as_bytes());
-        key.push(b':');
-        key.extend(&ts.to_be_bytes());
-        // serialize the trade as JSON
+        let key = Self::encode_key(&trade.symbol, trade);
         let value = bincode::encode_to_vec(trade, config)?;
-        // commit in a single-entry batch
         self.db.commit(vec![(col, key, Some(value))])?;
+        // // column 0 for trades
+        // let col: ColId = 0;
+        // let symbol = &trade.symbol;
+        // // timestamp in milliseconds since UNIX_EPOCH
+
+        // let ts: u64 = trade
+        //     .timestamp
+        //     .duration_since(UNIX_EPOCH)
+        //     .expect("system clock before UNIX_EPOCH")
+        //     .as_millis() as u64;
+        // // build key = symbol + ':' + big-endian timestamp
+        // let mut key = Vec::with_capacity(symbol.len() + 1 + 8);
+        // key.extend(symbol.as_bytes());
+        // key.push(b':');
+        // key.extend(&ts.to_be_bytes());
+        // // serialize the trade as JSON
+        // let value = bincode::encode_to_vec(trade, config)?;
+        // // commit in a single-entry batch
+        // self.db.commit(vec![(col, key, Some(value))])?;
         Ok(())
     }
 
+    //TODO update to use composite-key
     /// Retrieve up to `limit` most-recent trades for a given symbol.
     pub fn get_trades(&self, symbol: &str, limit: usize) -> StoreResult<Vec<Trade>> {
         let col: ColId = 0;
