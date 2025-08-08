@@ -1,9 +1,11 @@
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use bincode::{
-    config,
+    config::{self, standard},
     error::{DecodeError, EncodeError},
 };
 use parity_db::{BTreeIterator, ColId, Db, Options};
-use serde_json;
+use serde_json::{self};
 use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
@@ -11,6 +13,16 @@ use std::{
 use thiserror::Error;
 
 use crate::trade::Trade;
+
+//Cursor (opaque to clients)
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Cursor {
+    ts_nanos: u128,
+    maker_id: u64,
+    taker_id: u64,
+    price: u64,
+    quantity: u64,
+}
 
 /// Errors from the key/value store
 #[derive(Debug, Error)]
@@ -74,6 +86,44 @@ impl Store {
         key
     }
 
+    #[inline]
+    fn cursor_from_trade(t: &Trade) -> Cursor {
+        Cursor {
+            ts_nanos: Self::to_nanos(t.timestamp),
+            maker_id: t.maker_id,
+            taker_id: t.taker_id,
+            price: t.price,
+            quantity: t.quantity,
+        }
+    }
+
+    #[inline]
+    fn encode_cursor(c: &Cursor) -> String {
+        B64.encode(serde_json::to_vec(c).unwrap())
+    }
+
+    #[inline]
+    fn decode_cursor(s: &str) -> StoreResult<Cursor> {
+        let bytes = B64.decode(s).map_err(|_| StoreError::BadCursor)?;
+        serde_json::from_slice(&bytes).map_err(|_| StoreError::BadCursor)
+    }
+
+    #[inline]
+    fn start_key_from(symbol: &str, after: Option<&Cursor>) -> Vec<u8> {
+        match after {
+            None => Self::prefix(symbol),
+            Some(c) => {
+                let mut k = Self::prefix(symbol);
+                k.extend_from_slice(&c.ts_nanos.to_be_bytes());
+                k.extend_from_slice(&c.maker_id.to_be_bytes());
+                k.extend_from_slice(&c.taker_id.to_be_bytes());
+                k.extend_from_slice(&c.price.to_be_bytes());
+                k.extend_from_slice(&c.quantity.to_be_bytes());
+                k
+            }
+        }
+    }
+
     /// Insert a trade into the store under key "{symbol}:{timestamp_ms}".
     pub fn insert_trade(&mut self, trade: &Trade) -> StoreResult<()> {
         let config = config::standard();
@@ -103,8 +153,62 @@ impl Store {
         Ok(())
     }
 
-    //TODO update to use composite-key
-    /// Retrieve up to `limit` most-recent trades for a given symbol.
+    /// Page forward (ascending time) for a symbol, starting *strictly after* `after`.
+    ///
+    /// Returns (uitem , next_cursor). `next_cursor` is None when there are no more items.
+    pub fn page_trade_asc(
+        &self,
+        symbol: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> StoreResult<(Vec<Trade>, Option<String>)> {
+        let col: ColId = 0;
+        let mut it: BTreeIterator<'_> = self.db.iter(col)?;
+        let prefix = Self::prefix(symbol);
+
+        let after_decoded = match after {
+            None => None,
+            Some(s) => Some(Self::decode_cursor(s)?),
+        };
+        let start_key = Self::start_key_from(symbol, after_decoded.as_ref());
+        it.seek(&start_key)?;
+
+        //if we started exactly at the "after" key, advance one so we do "strictly after".
+        if after_decoded.is_some() {
+            if let Some((k, _)) = it.next()? {
+                if k.starts_with(&prefix) && k == start_key {
+                    //skip equal
+                } else {
+                    // we landed past the "after" position; rewind iterator by re-seeking
+                    it.seek(&start_key)?;
+                }
+            }
+        } else {
+            //no after; we are at first >= prefix; but we already consumed one via preview
+            //so re-seek to prefix for a clean loop
+            it.seek(&prefix)?;
+        }
+        let mut items = Vec::with_capacity(limit.min(256));
+        let mut last_cursor: Option<String> = None;
+
+        while items.len() < limit {
+            match it.next()? {
+                Some((k, v)) if k.starts_with(&prefix) => {
+                    let (trade, _): (Trade, usize) = bincode::decode_from_slice(&v, standard())?;
+                    last_cursor = Some(Self::encode_cursor(&Self::cursor_from_trade(&trade)));
+                    items.push(trade);
+                }
+                _ => break,
+            }
+        }
+        Ok((items, last_cursor))
+    }
+    ///NOTES
+    /// If you need "newest  first" efficiently, consider:
+    /// 1) A second column with inverted timestamp keys, OR
+    /// 2) Using an iterator that supports `seek_to_last/prev`
+    ///
+    ///    Retrieve up to `limit` most-recent trades for a given symbol.
     pub fn get_trades(&self, symbol: &str, limit: usize) -> StoreResult<Vec<Trade>> {
         let col: ColId = 0;
         let mut iter: BTreeIterator<'_> = self.db.iter(col)?;
