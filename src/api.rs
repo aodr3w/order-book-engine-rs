@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 use axum::{
     Json, Router,
     extract::{
-        Path, State, WebSocketUpgrade,
+        Path, Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::StatusCode,
@@ -25,6 +25,21 @@ use crate::{
     trade::Trade,
 };
 
+fn default_limit() -> usize {
+    100
+}
+#[derive(Deserialize)]
+pub struct TradesQuery {
+    #[serde(default = "default_limit")]
+    limit: usize,
+    after: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct TradesPage {
+    items: Vec<Trade>,
+    next: Option<String>,
+}
 /// Request payload for `POST /orders`.
 ///
 /// - `side`: buy or sell  
@@ -85,19 +100,23 @@ pub struct OrderAck {
 /// # Errors
 /// - `500 INTERNAL SERVER ERROR` if the trade store cannot be queried.
 ///
-/// # TODO
-/// Add pagination support to limit and page through large result sets.
 pub async fn get_trade_log(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
-) -> Result<Json<Vec<Trade>>, StatusCode> {
-    // TODO: paginate results
+    Query(q): Query<TradesQuery>,
+) -> Result<Json<TradesPage>, StatusCode> {
     let symbol = pair.code().clone();
-    let store = state.store.lock().unwrap();
-    let trades = store.iter_trades().unwrap();
-    Ok(Json(
-        trades.into_iter().filter(|t| t.symbol == symbol).collect(),
-    ))
+    let limit = q.limit.min(1000);
+    let (items, next) = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        store
+            .page_trade_asc(&symbol, q.after.as_deref(), limit)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    Ok(Json(TradesPage { items, next }))
 }
 
 /// `GET /book`
