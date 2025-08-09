@@ -148,8 +148,11 @@ pub async fn run_market_maker(
                 if pair != v {
                     continue;
                 }
-                let mid = (bids[0].0 + asks[0].0) / 2;
-                let _ = mid_tx.send(Some(mid));
+
+                if let (Some((bb, _)), Some((aa, _))) = (bids.first(), asks.first()) {
+                    let mid = (bb + aa) / 2;
+                    let _ = mid_tx.send(Some(mid));
+                }
             };
         }
     });
