@@ -25,8 +25,8 @@ help:
 	@echo "  make fmt | clippy | bench              # dev helpers"
 
 # Runs only the API server (use Ctrl-C to stop)
-server:
-	cargo run --release -- server $(PORT)
+serve:
+	cargo run --release -- serve $(PORT)
 
 # Runs server + market-maker + attacker; SECS empty => infinite until Ctrl-C
 simulate:
