@@ -203,38 +203,6 @@ impl Store {
         }
         Ok((items, last_cursor))
     }
-    ///NOTES
-    /// If you need "newest  first" efficiently, consider:
-    /// 1) A second column with inverted timestamp keys, OR
-    /// 2) Using an iterator that supports `seek_to_last/prev`
-    ///
-    ///    Retrieve up to `limit` most-recent trades for a given symbol.
-    pub fn get_trades(&self, symbol: &str, limit: usize) -> StoreResult<Vec<Trade>> {
-        let col: ColId = 0;
-        let mut iter: BTreeIterator<'_> = self.db.iter(col)?;
-        // seek to the first key >= symbol
-        iter.seek(symbol.as_bytes())?;
-
-        // collect all trades with prefix "symbol:"
-        let prefix = symbol.as_bytes();
-        let mut trades = Vec::new();
-        while let Some((key, raw)) = iter.next()? {
-            if !key.starts_with(prefix) {
-                break;
-            }
-            // parse JSON back into Trade
-            let trade: Trade = serde_json::from_slice(&raw)?;
-            trades.push(trade);
-        }
-
-        // if more than `limit`, return the last `limit` entries
-        let len = trades.len();
-        if len > limit {
-            Ok(trades[len - limit..].to_vec())
-        } else {
-            Ok(trades)
-        }
-    }
 
     /// Delete all trades for a given symbol.
     pub fn delete_trades(&mut self, symbol: &str) -> StoreResult<()> {
@@ -273,26 +241,46 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use crate::trade::Trade;
-    use chrono::Utc;
     use tempfile::tempdir;
 
     #[test]
-    fn test_store_roundtrip() {
+    fn test_paging_two_items_limit_one() {
         let dir = tempdir().unwrap();
         let mut store = Store::open(dir.path()).unwrap();
-        let t1 = Trade {
-            symbol: "BTC-USD".to_string(),
-            price: 42,
-            quantity: 3,
-            maker_id: 1,
-            taker_id: 2,
-            timestamp: Utc::now().into(),
+
+        let t_old = Trade {
+            symbol: "BTC-USD".into(),
+            price: 50,
+            quantity: 1,
+            maker_id: 10,
+            taker_id: 20,
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_nanos(1),
         };
-        store.insert_trade(&t1).unwrap();
-        let res = store.get_trades("BTC-USD", 10).unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0].symbol, t1.symbol);
+        let t_new = Trade {
+            symbol: "BTC-USD".into(),
+            price: 51,
+            quantity: 2,
+            maker_id: 11,
+            taker_id: 21,
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_nanos(2),
+        };
+        store.insert_trade(&t_old).unwrap();
+        store.insert_trade(&t_new).unwrap();
+
+        let (p1, c1) = store.page_trade_asc("BTC-USD", None, 1).unwrap();
+        assert_eq!(p1.len(), 1);
+        assert_eq!(p1[0].price, 50); // ascending by time
+
+        let (p2, c2) = store.page_trade_asc("BTC-USD", c1.as_deref(), 1).unwrap();
+        assert_eq!(p2.len(), 1);
+        assert_eq!(p2[0].price, 51);
+
+        let (p3, c3) = store.page_trade_asc("BTC-USD", c2.as_deref(), 1).unwrap();
+        assert!(p3.is_empty());
+        assert!(c3.is_none());
     }
 }
