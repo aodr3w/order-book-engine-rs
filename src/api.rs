@@ -146,6 +146,12 @@ pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
 ) -> Result<Json<OrderAck>, (StatusCode, Json<serde_json::Value>)> {
+    if payload.quantity == 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "quantity must be > 0"})),
+        ));
+    }
     let (order_id, trades) = {
         let mut books = state.order_books.lock().unwrap();
         let book = books.get_mut(&payload.pair).unwrap();
