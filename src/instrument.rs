@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize, de};
+use serde::{Deserialize, Serialize, Serializer, de};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Asset {
@@ -10,7 +10,7 @@ pub enum Asset {
 }
 
 //A Trading pair: base/quote
-#[derive(Serialize, Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Pair {
     /// The asset you buy or sell
     pub base: Asset,
@@ -55,8 +55,13 @@ impl<'de> Deserialize<'de> for Pair {
     }
 }
 
-// TODO define pairs here
-// BTC_USD = Pair {base: ..., quote: ....}
+// String *serialization* for Pair (e.g., "BTC-USD")
+impl Serialize for Pair {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.code())
+    }
+}
+
 pub const BTC_USD: Pair = Pair {
     base: Asset::BTC,
     quote: Asset::USD,
