@@ -131,25 +131,6 @@ impl Store {
         let key = Self::encode_key(&trade.symbol, trade);
         let value = bincode::encode_to_vec(trade, config)?;
         self.db.commit(vec![(col, key, Some(value))])?;
-        // // column 0 for trades
-        // let col: ColId = 0;
-        // let symbol = &trade.symbol;
-        // // timestamp in milliseconds since UNIX_EPOCH
-
-        // let ts: u64 = trade
-        //     .timestamp
-        //     .duration_since(UNIX_EPOCH)
-        //     .expect("system clock before UNIX_EPOCH")
-        //     .as_millis() as u64;
-        // // build key = symbol + ':' + big-endian timestamp
-        // let mut key = Vec::with_capacity(symbol.len() + 1 + 8);
-        // key.extend(symbol.as_bytes());
-        // key.push(b':');
-        // key.extend(&ts.to_be_bytes());
-        // // serialize the trade as JSON
-        // let value = bincode::encode_to_vec(trade, config)?;
-        // // commit in a single-entry batch
-        // self.db.commit(vec![(col, key, Some(value))])?;
         Ok(())
     }
 
@@ -166,34 +147,21 @@ impl Store {
         let mut it: BTreeIterator<'_> = self.db.iter(col)?;
         let prefix = Self::prefix(symbol);
 
-        let after_decoded = match after {
-            None => None,
-            Some(s) => Some(Self::decode_cursor(s)?),
-        };
+        let after_decoded = after.map(Self::decode_cursor).transpose()?;
         let start_key = Self::start_key_from(symbol, after_decoded.as_ref());
         it.seek(&start_key)?;
 
-        //if we started exactly at the "after" key, advance one so we do "strictly after".
-        if after_decoded.is_some() {
-            if let Some((k, _)) = it.next()? {
-                if k.starts_with(&prefix) && k == start_key {
-                    //skip equal
-                } else {
-                    // we landed past the "after" position; rewind iterator by re-seeking
-                    it.seek(&start_key)?;
-                }
-            }
-        } else {
-            //no after; we are at first >= prefix; but we already consumed one via preview
-            //so re-seek to prefix for a clean loop
-            it.seek(&prefix)?;
-        }
         let mut items = Vec::with_capacity(limit.min(256));
         let mut last_cursor: Option<String> = None;
+        let mut skip_equal = after_decoded.is_some(); // “strictly after”
 
         while items.len() < limit {
             match it.next()? {
                 Some((k, v)) if k.starts_with(&prefix) => {
+                    if skip_equal && k == start_key {
+                        skip_equal = false;
+                        continue; // skip the exact ‘after’ key
+                    }
                     let (trade, _): (Trade, usize) = bincode::decode_from_slice(&v, standard())?;
                     last_cursor = Some(Self::encode_cursor(&Self::cursor_from_trade(&trade)));
                     items.push(trade);
@@ -201,6 +169,7 @@ impl Store {
                 _ => break,
             }
         }
+
         Ok((items, last_cursor))
     }
 
