@@ -25,6 +25,11 @@ use crate::{
     trade::Trade,
 };
 
+type ApiErr = (StatusCode, Json<serde_json::Value>);
+fn err(status: StatusCode, msg: &str) -> ApiErr {
+    (status, Json(json!({ "error": msg })))
+}
+
 fn default_limit() -> usize {
     100
 }
@@ -105,7 +110,6 @@ pub async fn get_trade_log(
     State(state): State<AppState>,
     Query(q): Query<TradesQuery>,
 ) -> Result<Json<TradesPage>, StatusCode> {
-    let symbol = pair.code().clone();
     let limit = q.limit.min(1000);
     let (items, next) = {
         let store = state
@@ -113,7 +117,7 @@ pub async fn get_trade_log(
             .lock()
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         store
-            .page_trade_asc(&symbol, q.after.as_deref(), limit)
+            .page_trade_asc(&pair.code(), q.after.as_deref(), limit)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     };
     Ok(Json(TradesPage { items, next }))
@@ -145,17 +149,23 @@ pub async fn get_order_book(
 pub async fn create_order(
     State(state): State<AppState>,
     Json(payload): Json<NewOrder>,
-) -> Result<Json<OrderAck>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<OrderAck>, ApiErr> {
     if payload.quantity == 0 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "quantity must be > 0"})),
-        ));
+        return Err(err(StatusCode::BAD_REQUEST, "quantity must be > 0"));
     }
     let (order_id, trades) = {
-        let mut books = state.order_books.lock().unwrap();
-        let book = books.get_mut(&payload.pair).unwrap();
-        let mut log = state.trade_log.lock().unwrap();
+        let mut books = state
+            .order_books
+            .lock()
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+        let Some(book) = books.get_mut(&payload.pair) else {
+            return Err(err(StatusCode::BAD_REQUEST, "unsupported pair"));
+        };
+        let mut log = state
+            .trade_log
+            .lock()
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
         let order = Order {
             id: Uuid::new_v4().as_u128() as u64,
             side: payload.side,
@@ -172,19 +182,18 @@ pub async fn create_order(
     };
 
     //persist all trades in store
-    let mut store = state.store.lock().unwrap();
+    let mut store = state
+        .store
+        .lock()
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
     for trade in &trades {
-        store.insert_trade(trade).map_err(|e| {
-            error!("DB insert failed: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "failed to persist trade"})),
-            )
-        })?;
+        store
+            .insert_trade(trade)
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
     }
 
     //broadcast trades after successfull persistence
-    for trade in trades.iter() {
+    for trade in &trades {
         let _ = state.trade_tx.send(trade.clone());
     }
     let _ = state.book_tx.send(payload.pair);
@@ -204,18 +213,21 @@ pub async fn cancel_order(
 ) -> impl IntoResponse {
     //TODO confirm pair is valid
     //this is incomplete
-    let mut books = state.order_books.lock().unwrap();
-    let book = books.get_mut(&pair).unwrap();
+    let mut books = match state.order_books.lock() {
+        Ok(g) => g,
+        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    };
+
+    let Some(book) = books.get_mut(&pair) else {
+        return err(StatusCode::BAD_REQUEST, "unsupported pair");
+    };
     if book.cancel_order(order_id) {
         info!("Order {} cancelled successfully.", order_id);
         let _ = state.book_tx.send(pair);
         (StatusCode::OK, Json(json!({"status": "cancelled"})))
     } else {
         warn!("Cancel failed: Order {} not found.", order_id);
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Order not found", "status": 404})),
-        )
+        err(StatusCode::NOT_FOUND, "order not found")
     }
 }
 
@@ -239,9 +251,11 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
     //initial snapshot
     let initial = {
-        let books = state.order_books.lock().unwrap();
-        let book = &books[&pair];
-        BookSnapshot::for_pair(pair.clone(), book)
+        let books = state.order_books.lock().unwrap(); //TODO consider a RWLock
+        match books.get(&pair) {
+            Some(book) => BookSnapshot::for_pair(pair.clone(), book),
+            None => BookSnapshot::empty(pair.clone()),
+        }
     };
     if let Err(e) = socket
         .send(Message::Text(
