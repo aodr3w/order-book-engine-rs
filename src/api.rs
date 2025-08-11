@@ -165,10 +165,7 @@ pub async fn get_trade_log(
 ) -> Result<Json<TradesPage>, StatusCode> {
     let limit = q.limit.min(1000);
     let (items, next) = {
-        let store = state
-            .store
-            .lock()
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let store = state.store.read().await;
         store
             .page_trade_asc(&pair.code(), q.after.as_deref(), limit)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -231,10 +228,7 @@ pub async fn create_order(
     };
 
     //persist all trades in store
-    let mut store = state
-        .store
-        .lock()
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let mut store = state.store.write().await;
     for trade in &trades {
         store
             .insert_trade(trade)

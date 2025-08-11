@@ -6,10 +6,7 @@ use crate::{
     store::{Store, StoreResult},
     trade::Trade,
 };
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 /// Shared application state.
 ///
@@ -33,7 +30,7 @@ pub struct AppState {
     pub book_tx: broadcast::Sender<Pair>,
 
     /// store
-    pub store: Arc<Mutex<Store>>,
+    pub store: Arc<RwLock<Store>>,
 }
 
 impl AppState {
@@ -51,7 +48,7 @@ impl AppState {
             trade_log: Arc::new(RwLock::new(Vec::new())),
             trade_tx,
             book_tx,
-            store: Arc::new(Mutex::new(store)),
+            store: Arc::new(RwLock::new(store)),
         })
     }
 }
