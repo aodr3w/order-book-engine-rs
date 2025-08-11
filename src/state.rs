@@ -24,7 +24,7 @@ pub struct AppState {
     pub order_books: Arc<RwLock<HashMap<Pair, OrderBook>>>,
 
     /// The in‐memory trade history.
-    pub trade_log: Arc<Mutex<Vec<Trade>>>,
+    pub trade_log: Arc<RwLock<Vec<Trade>>>,
 
     /// Broadcast channel for new trades.
     pub trade_tx: broadcast::Sender<Trade>,
@@ -48,7 +48,7 @@ impl AppState {
         }
         Ok(Self {
             order_books: Arc::new(RwLock::new(books)),
-            trade_log: Arc::new(Mutex::new(Vec::new())),
+            trade_log: Arc::new(RwLock::new(Vec::new())),
             trade_tx,
             book_tx,
             store: Arc::new(Mutex::new(store)),

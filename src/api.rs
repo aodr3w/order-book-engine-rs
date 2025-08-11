@@ -214,10 +214,7 @@ pub async fn create_order(
             log_rejected(&payload, "unsupported pair");
             return Err(err(StatusCode::BAD_REQUEST, "unsupported pair"));
         };
-        let mut log = state
-            .trade_log
-            .lock()
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+        let mut log = state.trade_log.write().await;
         let order = Order {
             id: Uuid::new_v4().as_u128() as u64,
             side: payload.side,
