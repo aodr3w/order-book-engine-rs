@@ -75,7 +75,7 @@ struct NewOrder {
     order_type: OrderType,
     price: Option<u64>,
     quantity: u64,
-    pair: Pair,
+    symbol: String,
 }
 
 /// Starts the market maker loop against a REST+WS API at `api_base`.
@@ -193,7 +193,7 @@ pub async fn run_market_maker(
                             order_type: OrderType::Limit,
                             price: Some(mid_price.saturating_sub(SPREAD)),
                             quantity: 1,
-                            pair: target_pair.clone(),
+                            symbol: target_pair.code(),
                         })
                         .send()
                         .await
@@ -211,7 +211,7 @@ pub async fn run_market_maker(
                             order_type: OrderType::Limit,
                             price: Some(mid_price.saturating_add(SPREAD)),
                             quantity: 1,
-                            pair: target_pair.clone(),
+                            symbol: target_pair.code(),
                         })
                         .send()
                         .await
