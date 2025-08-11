@@ -155,6 +155,7 @@ pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> 
             // 4) Send the market order
             let raw: f64 = <Exp1 as Distribution<f64>>::sample(&size_dist, &mut rand::rng());
             let qty = raw * cfg.mean_qty;
+            let qty_u64 = qty.max(1.0) as u64;
             //drift mid price
             mid_price += drift.sample(&mut rand::rng());
             // now place a limit order around that drifted price ± spread
@@ -169,7 +170,7 @@ pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> 
                       "side": side,
                       "order_type": "Limit",
                       "price": price as u64,
-                      "quantity": qty as u64,
+                      "quantity": qty_u64,
                       "symbol": "BTC-USD",
                   }))
               .send()
