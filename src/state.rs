@@ -1,4 +1,4 @@
-use tokio::sync::broadcast;
+use tokio::sync::{RwLock, broadcast};
 
 use crate::{
     instrument::Pair,
@@ -21,7 +21,7 @@ use std::{
 #[derive(Clone)]
 pub struct AppState {
     ///in-memory map of books, with an order-book per pair
-    pub order_books: Arc<Mutex<HashMap<Pair, OrderBook>>>,
+    pub order_books: Arc<RwLock<HashMap<Pair, OrderBook>>>,
 
     /// The in‐memory trade history.
     pub trade_log: Arc<Mutex<Vec<Trade>>>,
@@ -47,7 +47,7 @@ impl AppState {
             books.insert(pair.clone(), OrderBook::new());
         }
         Ok(Self {
-            order_books: Arc::new(Mutex::new(books)),
+            order_books: Arc::new(RwLock::new(books)),
             trade_log: Arc::new(Mutex::new(Vec::new())),
             trade_tx,
             book_tx,

@@ -9,4 +9,8 @@ A second column with inverted timestamp keys, OR
 Using an iterator that supports `seek_to_last/prev` (if ParityDB adds it).
 
 
-move to a RWLock 
+Move to a RWLock 
+Add design choices section to README
+- locking
+- storage (Cursor logic)
+- orderbook structure

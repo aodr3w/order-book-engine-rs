@@ -182,7 +182,7 @@ pub async fn get_order_book(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    let books = state.order_books.lock().unwrap();
+    let books = state.order_books.read().await;
     let snapshot = books
         .get(&pair)
         .map(|book| BookSnapshot::for_pair(pair.clone(), book))
@@ -208,10 +208,7 @@ pub async fn create_order(
         return Err(err(StatusCode::BAD_REQUEST, "quantity must be > 0"));
     }
     let (order_id, trades) = {
-        let mut books = state
-            .order_books
-            .lock()
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+        let mut books = state.order_books.write().await;
 
         let Some(book) = books.get_mut(&payload.pair) else {
             log_rejected(&payload, "unsupported pair");
@@ -268,10 +265,7 @@ pub async fn cancel_order(
 ) -> impl IntoResponse {
     //TODO confirm pair is valid
     //this is incomplete
-    let mut books = match state.order_books.lock() {
-        Ok(g) => g,
-        Err(e) => return err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    };
+    let mut books = state.order_books.write().await;
 
     let Some(book) = books.get_mut(&pair) else {
         return err(StatusCode::BAD_REQUEST, "unsupported pair");
@@ -306,7 +300,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
     //initial snapshot
     let initial = {
-        let books = state.order_books.lock().unwrap(); //TODO consider a RWLock
+        let books = state.order_books.read().await; //TODO consider a RWLock
         match books.get(&pair) {
             Some(book) => BookSnapshot::for_pair(pair.clone(), book),
             None => BookSnapshot::empty(pair.clone()),
@@ -340,7 +334,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
                 if updated_pair.code().cmp(&pair.code()).is_eq(){
                     //get related book
                     let book = {
-                         state.order_books.lock().unwrap()[&pair].clone()
+                         state.order_books.read().await[&pair].clone()
                     };
 
                     let snap = BookSnapshot::for_pair(pair.clone(), &book);
