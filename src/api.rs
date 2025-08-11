@@ -1,4 +1,7 @@
-use serde::{Deserialize, Deserializer, Serialize, de};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{self, DeserializeOwned},
+};
 use serde_json::json;
 use std::{str::FromStr, time::SystemTime};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -6,8 +9,9 @@ use tracing::{error, info, warn};
 
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{
-        Path, Query, State, WebSocketUpgrade,
+        FromRequest, Path, Query, Request, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::StatusCode,
@@ -28,6 +32,55 @@ use crate::{
 type ApiErr = (StatusCode, Json<serde_json::Value>);
 fn err(status: StatusCode, msg: &str) -> ApiErr {
     (status, Json(json!({ "error": msg })))
+}
+
+fn log_rejected(payload: &NewOrder, reason: &str) {
+    warn!(
+        reason,
+        side = ?payload.side,
+        order_type = ?payload.order_type,
+        price = ?payload.price,
+        quantity = payload.quantity,
+        pair = %payload.pair.code(),
+        "order rejected"
+    );
+}
+
+pub struct LoggedJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for LoggedJson<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned,
+{
+    type Rejection = ApiErr;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        //capture request detais for logging
+        let method = req.method().clone();
+        let uri = req.uri().clone();
+        // read full body
+        let bytes = Bytes::from_request(req, state)
+            .await
+            .map_err(|e| (err(StatusCode::BAD_REQUEST, &e.to_string())))?;
+
+        match serde_json::from_slice::<T>(&bytes) {
+            Ok(val) => Ok(LoggedJson(val)),
+            Err(e) => {
+                //cap body preview to avoid giant logs
+                let preview = String::from_utf8_lossy(&bytes);
+                let preview = &preview[..preview.len().min(4096)];
+                warn!(
+                    error = %e,
+                    %method,
+                    uri=%uri,
+                    body_preview = %preview,
+                    "order rejected: JSON deserialization failed"
+                );
+                Err(err(StatusCode::UNPROCESSABLE_ENTITY, &e.to_string()))
+            }
+        }
+    }
 }
 
 fn default_limit() -> usize {
@@ -148,9 +201,10 @@ pub async fn get_order_book(
 ///   • 500, JSON `{ "error": "internal server error" }`
 pub async fn create_order(
     State(state): State<AppState>,
-    Json(payload): Json<NewOrder>,
+    LoggedJson(payload): LoggedJson<NewOrder>,
 ) -> Result<Json<OrderAck>, ApiErr> {
     if payload.quantity == 0 {
+        log_rejected(&payload, "quantity must be > 0");
         return Err(err(StatusCode::BAD_REQUEST, "quantity must be > 0"));
     }
     let (order_id, trades) = {
@@ -160,6 +214,7 @@ pub async fn create_order(
             .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
         let Some(book) = books.get_mut(&payload.pair) else {
+            log_rejected(&payload, "unsupported pair");
             return Err(err(StatusCode::BAD_REQUEST, "unsupported pair"));
         };
         let mut log = state
