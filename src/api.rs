@@ -327,7 +327,8 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     loop {
         tokio::select! {
             Ok(trade) = trade_rx.recv() => {
-                if trade.symbol == pair.clone().code() {
+
+                if trade.symbol.cmp(&pair.code()).is_eq() {
                 if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await {
                     error!("WebSocket send trade failed: {:?}", e);
                     break;
@@ -336,7 +337,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
             }
             Ok(updated_pair) = book_rx.recv() => {
-                if updated_pair == pair.clone() {
+                if updated_pair.code().cmp(&pair.code()).is_eq(){
                     //get related book
                     let book = {
                          state.order_books.lock().unwrap()[&pair].clone()
