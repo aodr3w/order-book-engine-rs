@@ -3,7 +3,7 @@ use serde::{
     de::{self, DeserializeOwned},
 };
 use serde_json::json;
-use std::{str::FromStr, time::SystemTime};
+use std::{collections::HashMap, str::FromStr, time::SystemTime};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn};
 
@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::{
-        FromRequest, Path, Query, Request, State, WebSocketUpgrade,
+        FromRequest, FromRequestParts, Path, Query, Request, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::StatusCode,
@@ -32,6 +32,38 @@ use crate::{
 type ApiErr = (StatusCode, Json<serde_json::Value>);
 fn err(status: StatusCode, msg: &str) -> ApiErr {
     (status, Json(json!({ "error": msg })))
+}
+
+///Layer/extractor that validates `pair` if it exists in the route params.
+/// Work for routes with 0, 1, or many path params.
+#[derive(Clone, Copy, Debug)]
+struct PairGuard;
+
+impl<S> FromRequestParts<S> for PairGuard
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, Json<serde_json::Value>);
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        //Grab all named parama as a HashMap
+        let Ok(Path(params)) = <axum::extract::Path<
+            HashMap<std::string::String, std::string::String>,
+        > as axum::extract::FromRequestParts<S>>::from_request_parts(
+            parts, state
+        )
+        .await
+        else {
+            return Ok(PairGuard); //no params -> nothing to validate
+        };
+        if let Some(pair_str) = params.get("pair") {
+            Pair::from_str(pair_str).map_err(|e| err(StatusCode::BAD_REQUEST, &e.to_string()))?;
+        }
+        Ok(PairGuard)
+    }
 }
 
 fn log_rejected(payload: &NewOrder, reason: &str) {
@@ -341,17 +373,15 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
 /// Constructs the application’s `Router` with all routes and shared state.
 pub fn router(state: AppState) -> Router {
-    //all routes that require pair will pass throught the middleware that validates the pair argument
-    let root = Router::new().route("/orders", post(create_order));
-
-    let pair_router = Router::new()
+    let router = Router::new()
+        .route("/orders", post(create_order))
         .route("/orders/{pair}/{id}", delete(cancel_order))
         .route("/trades/{pair}", get(get_trade_log))
         .route("/book/{pair}", get(get_order_book))
         .route("/ws/{pair}", get(ws_handler))
-        .layer(middleware::from_extractor::<Path<Pair>>());
+        .layer(middleware::from_extractor::<PairGuard>());
 
-    root.merge(pair_router)
+    router
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(
