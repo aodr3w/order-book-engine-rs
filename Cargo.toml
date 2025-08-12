@@ -3,40 +3,52 @@ name = "order_book_engine"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-name = "order_book_engine"
-path="src/lib.rs"
+# You can drop this whole [lib] stanza — defaults already match:
+# [lib]
+# name = "order_book_engine"
+# path = "src/lib.rs"
 
 [dependencies]
-anyhow = "1.0.98"
-axum = { version = "0.8.3", features = ["macros", "ws"] }
-chrono = "0.4.41"
-clap = { version = "4.5.36", features = ["derive"] }
-dotenvy = "0.15.7"
-futures = "0.3.31"
-futures-util = "0.3.31"
-rand = "0.9.0"
-reqwest = { version = "0.12.15", features = ["json"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
-bigdecimal = "0.4"
-thiserror = "2.0.12"
-tokio = { version = "1.44.2", features = ["full"] }
-tokio-tungstenite = "0.26.2"
-tracing = "0.1.41"
-tracing-subscriber = "0.3.19"
-uuid = { version = "1.16.0", features = ["v4"] }
-tower-http = {version = "0.6.6", features = ["full"] }
-parity-db = "0.5.3"
-tempfile = "3.20.0"
-bincode = "2.0.1"
-tokio-util = { version = "0.7.15" }
-rand_distr = "0.5.1"
-base64 = "0.22.1"
+anyhow = "1"
+axum = { version = "0.8", features = ["macros", "ws"] }
+
+clap = { version = "4.5", features = ["derive"] }
+
+# Keep both; you use StreamExt from futures-util
+futures-util = "0.3"
+
+rand = "0.9"
+rand_distr = "0.5"
+
+# Narrow reqwest features; enable TLS explicitly (nice for CI/release)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+thiserror = "2"
+
+# Avoid "full"; only what you need (works for #[tokio::main]/#[tokio::test], timers, net, signal, sync)
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "net", "signal", "sync"] }
+
+tokio-tungstenite = "0.26"
+tokio-util = "0.7"
+
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+uuid = { version = "1", features = ["v4"] }
+
+# You only use TraceLayer; "full" is heavy
+tower-http = { version = "0.6", features = ["trace"] }
+
+parity-db = "0.5"
+bincode   = "2"
+base64    = "0.22"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
-
+tempfile  = "3"
 
 [[bench]]
 name = "benchmark"
