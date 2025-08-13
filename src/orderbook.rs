@@ -232,6 +232,7 @@ impl OrderBook {
             if found {
                 //prune the price level if needed
                 if let Some(price) = price_to_prune {
+                    println!("cleaning empty price levels");
                     book_side.remove(&price);
                 }
                 return true;
@@ -480,7 +481,7 @@ mod tests {
         let was_cancelled = ob.cancel_order(order.id);
 
         assert!(was_cancelled);
-        assert!(ob.bids.get(&101).unwrap().is_empty()); //TODO should this key still be here even after cancellation ?
+        assert!(!ob.bids.contains_key(&101)); //price level should have been cleared after order was cancelled
     }
 
     #[test]
