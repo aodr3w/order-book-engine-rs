@@ -161,7 +161,7 @@ where
 /// {"type": "BookSnapshot", "data": { /* snapshot fields */}}
 /// {"type": "Trade", "data": { /* trade fields */}}
 /// ```
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "data")]
 pub enum WsFrame {
     BookSnapshot(BookSnapshot),
