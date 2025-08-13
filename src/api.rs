@@ -157,7 +157,7 @@ where
 /// a single trade event.
 ///
 /// Serialized as an internally-tagged enum:
-/// ```
+/// ```json
 /// {"type": "BookSnapshot", "data": { /* snapshot fields */}}
 /// {"type": "Trade", "data": { /* trade fields */}}
 /// ```
