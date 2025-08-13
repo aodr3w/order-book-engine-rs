@@ -1,6 +1,5 @@
-use std::str::FromStr;
-
-use serde::{Deserialize, Serialize, Serializer, de};
+use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Asset {
@@ -9,20 +8,38 @@ pub enum Asset {
     ETH,
 }
 
-//A Trading pair: base/quote
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+impl fmt::Display for Asset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Asset::BTC => "BTC",
+            Asset::USD => "USD",
+            Asset::ETH => "ETH",
+        })
+    }
+}
+impl FromStr for Asset {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "BTC" => Ok(Asset::BTC),
+            "ETH" => Ok(Asset::ETH),
+            "USD" => Ok(Asset::USD),
+            _ => Err(format!("unknown asset `{s}`")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")] // <-- key line: JSON is "BTC-USD"
 pub struct Pair {
-    /// The asset you buy or sell
     pub base: Asset,
-    /// The asset you pay or receive
     pub quote: Asset,
 }
+
 impl Pair {
-    /// Returns the usual string code, e.g "BTC-USD"
     pub fn code(&self) -> String {
-        format!("{:?}-{:?}", self.base, self.quote)
+        self.to_string()
     }
-    ///crypto-USD factory spot pairs
     pub fn crypto_usd(base: Asset) -> Self {
         Pair {
             base,
@@ -33,32 +50,35 @@ impl Pair {
         &[BTC_USD, ETH_USD]
     }
 }
+
+impl fmt::Display for Pair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.base, self.quote)
+    }
+}
+
+// Fast, allocation-free FromStr that *also* enforces your whitelist.
 impl FromStr for Pair {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Pair::supported()
-            .iter()
-            .find(|p| p.code() == s)
-            .cloned()
-            .ok_or_else(|| format!("unsupported symbol: `{}`", s))
+        match s {
+            "BTC-USD" => Ok(BTC_USD),
+            "ETH-USD" => Ok(ETH_USD),
+            _ => Err(format!("unsupported symbol: `{}`", s)),
+        }
     }
 }
 
-//allows for deserialization of path variable into Pair
-impl<'de> Deserialize<'de> for Pair {
-    fn deserialize<D>(de: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(de)?;
-        Pair::from_str(&s).map_err(de::Error::custom)
+// Glue for #[serde(try_from, into)]
+impl TryFrom<String> for Pair {
+    type Error = String;
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
     }
 }
-
-// String *serialization* for Pair (e.g., "BTC-USD")
-impl Serialize for Pair {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.code())
+impl From<Pair> for String {
+    fn from(p: Pair) -> Self {
+        p.to_string()
     }
 }
 
