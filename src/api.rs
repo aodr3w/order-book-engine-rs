@@ -129,6 +129,37 @@ where
 fn default_limit() -> usize {
     100
 }
+
+mod u128_string {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(x: &u128, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        s.serialize_str(&x.to_string())
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<u128, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(d)?;
+        s.parse::<u128>().map_err(serde::de::Error::custom)
+    }
+}
+
+/// Response for `POST /orders`.
+///
+/// - `order_id`: the newly generated order ID  
+/// - `trades`: any matched trades resulting from this order
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct OrderAck {
+    #[serde(with = "u128_string")]
+    pub order_id: u128,
+    trades: Vec<Trade>,
+}
+
 #[derive(Deserialize)]
 pub struct TradesQuery {
     #[serde(default = "default_limit")]
@@ -177,15 +208,6 @@ where
 pub enum WsFrame {
     BookSnapshot(BookSnapshot),
     Trade(Trade),
-}
-/// Response for `POST /orders`.
-///
-/// - `order_id`: the newly generated order ID  
-/// - `trades`: any matched trades resulting from this order
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct OrderAck {
-    pub order_id: u128,
-    trades: Vec<Trade>,
 }
 
 /// `GET /trades/{pair}`
