@@ -79,7 +79,7 @@ where
 
 fn log_rejected(payload: &NewOrder, reason: &str) {
     warn!(
-        reason,
+        reason = %reason,
         side = ?payload.side,
         order_type = ?payload.order_type,
         price = ?payload.price,
@@ -184,7 +184,7 @@ pub enum WsFrame {
 /// - `trades`: any matched trades resulting from this order
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct OrderAck {
-    pub order_id: u64,
+    pub order_id: u128,
     trades: Vec<Trade>,
 }
 
@@ -271,7 +271,7 @@ pub async fn create_order(
         };
         let mut log = state.trade_log.write().await;
         let order = Order {
-            id: Uuid::new_v4().as_u128() as u64,
+            id: Uuid::new_v4().as_u128(),
             side: payload.side,
             order_type: payload.order_type,
             price: payload.price,
@@ -310,7 +310,7 @@ pub async fn create_order(
 /// *Failure:* 404, JSON `{ "error": "Order not found", "status": 404 }`
 pub async fn cancel_order(
     State(state): State<AppState>,
-    Path((pair, order_id)): Path<(Pair, u64)>,
+    Path((pair, order_id)): Path<(Pair, u128)>,
 ) -> impl IntoResponse {
     let mut books = state.order_books.write().await;
 

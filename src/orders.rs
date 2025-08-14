@@ -36,7 +36,7 @@ pub enum OrderType {
 /// - `timestamp` is used for time-priority (FIFO within price level)
 #[derive(Debug, Clone)]
 pub struct Order {
-    pub id: u64,
+    pub id: u128,
     pub side: Side,
     pub order_type: OrderType,
     pub price: Option<u64>,

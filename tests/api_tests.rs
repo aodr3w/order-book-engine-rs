@@ -1,10 +1,15 @@
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
+    response::Response,
 };
 use http_body_util::BodyExt;
-use order_book_engine::{api::router, state::AppState};
+
+use order_book_engine::{
+    api::{OrderAck, router},
+    state::AppState,
+};
 use serde_json::{Value, json};
 use tempfile::tempdir;
 use tower::ServiceExt;
@@ -151,6 +156,11 @@ async fn create_order_invalid_symbol_yields_422_from_loggedjson() {
     assert!(v["error"].as_str().unwrap().contains("unsupported symbol"));
 }
 
+async fn json<T: serde::de::DeserializeOwned>(res: Response) -> T {
+    let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 #[tokio::test]
 async fn limit_order_rests_then_cancel_removes_it() {
     let (app, _tmp) = test_app().await;
@@ -177,8 +187,8 @@ async fn limit_order_rests_then_cancel_removes_it() {
         .unwrap();
 
     assert_eq!(res.status(), StatusCode::OK);
-    let ack = body_json(res).await;
-    let order_id = ack["order_id"].as_u64().unwrap();
+    let ack: OrderAck = json(res).await;
+    let order_id = ack.order_id;
 
     let res = app
         .clone()

@@ -160,7 +160,7 @@ pub async fn run_market_maker(
     // 3) Every PACE_MS: if the mid‐price has changed since our last quote,
     //    cancel the old bid/ask and post fresh ones around the new mid.
     let client = reqwest::Client::new();
-    let mut outstanding: Vec<u64> = Vec::new();
+    let mut outstanding: Vec<u128> = Vec::new();
     let mut interval = time::interval(time::Duration::from_millis(PACE_MS));
     let mut last_mid = None;
     loop {

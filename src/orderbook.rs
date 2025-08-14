@@ -215,7 +215,7 @@ impl OrderBook {
     ///
     /// Returns `true` if the order was found *and* removed;
     /// also prunes the price level if it becomes empty.
-    pub fn cancel_order(&mut self, order_id: u64) -> bool {
+    pub fn cancel_order(&mut self, order_id: u128) -> bool {
         for book_side in [&mut self.bids, &mut self.asks] {
             let mut price_to_prune: Option<u64> = None;
             let mut found = false;
@@ -296,7 +296,7 @@ mod tests {
 
     use super::*;
 
-    fn sample_limit_order(id: u64, side: Side, price: u64, quantity: u64) -> Order {
+    fn sample_limit_order(id: u128, side: Side, price: u64, quantity: u64) -> Order {
         Order {
             id,
             side,
@@ -308,7 +308,7 @@ mod tests {
         }
     }
 
-    fn sample_market_order(id: u64, side: Side, quantity: u64) -> Order {
+    fn sample_market_order(id: u128, side: Side, quantity: u64) -> Order {
         Order {
             id,
             side,

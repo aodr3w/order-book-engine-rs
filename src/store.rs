@@ -18,8 +18,8 @@ use crate::trade::Trade;
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Cursor {
     ts_nanos: u128,
-    maker_id: u64,
-    taker_id: u64,
+    maker_id: u128,
+    taker_id: u128,
     price: u64,
     quantity: u64,
 }

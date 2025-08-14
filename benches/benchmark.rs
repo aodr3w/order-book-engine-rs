@@ -11,7 +11,7 @@ fn setup_order_book(depth: u64, orders_per_level: u64) -> OrderBook {
         for i in 0..orders_per_level {
             // Sell side
             ob.add_order(Order {
-                id: price * 1_000 + i,
+                id: (price as u128) * 1_000u128 + (i as u128),
                 side: Side::Sell,
                 order_type: OrderType::Limit,
                 price: Some(price),
@@ -20,7 +20,7 @@ fn setup_order_book(depth: u64, orders_per_level: u64) -> OrderBook {
                 pair: BTC_USD,
             });
             ob.add_order(Order {
-                id: (depth + price) * 1_000 + i,
+                id: ((depth as u128 + price as u128) * 1_000u128) + (i as u128),
                 side: Side::Buy,
                 order_type: OrderType::Limit,
                 price: Some(price),

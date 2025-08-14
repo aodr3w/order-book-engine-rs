@@ -19,8 +19,8 @@ use std::time::SystemTime;
 pub struct Trade {
     pub price: u64,
     pub quantity: u64,
-    pub maker_id: u64,
-    pub taker_id: u64,
+    pub maker_id: u128,
+    pub taker_id: u128,
     pub timestamp: SystemTime,
     pub symbol: String,
 }
