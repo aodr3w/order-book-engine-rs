@@ -112,7 +112,7 @@ where
             Err(e) => {
                 //cap body preview to avoid giant logs
                 let preview = String::from_utf8_lossy(&bytes);
-                let preview = &preview[..preview.len().min(4096)];
+                let preview: String = preview.chars().take(4096).collect();
                 warn!(
                     error = %e,
                     %method,
