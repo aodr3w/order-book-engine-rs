@@ -22,6 +22,22 @@ async fn body_json(res: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
+async fn test_effective_limit_on_get_trade_log() {
+    let (app, _tmp) = test_app().await;
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/trades/BTC-USD?limit=5000")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("x-effective-limit").unwrap(), "1000");
+}
+#[tokio::test]
 async fn pairguard_rejects_bad_pair_on_book() {
     let (app, _tmp) = test_app().await;
 
