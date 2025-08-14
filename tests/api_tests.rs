@@ -313,3 +313,43 @@ async fn trades_endpoint_paginates_forward() {
     let page2 = body_json(res).await;
     assert_eq!(page2["items"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn trades_rejects_zero_limit() {
+    let (app, _tmp) = test_app().await;
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/trades/BTC-USD?limit=0")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let v = body_json(res).await;
+    let msg = v["error"].as_str().unwrap().to_lowercase();
+    assert!(msg.contains("limit") && msg.contains("> 0"));
+}
+
+#[tokio::test]
+async fn trades_rejects_invalid_after_cursor() {
+    let (app, _tmp) = test_app().await;
+
+    // clearly not a valid cursor (not base64/JSON)
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/trades/BTC-USD?after=this_is_not_a_cursor")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let v = body_json(res).await;
+    assert_eq!(v["error"], "invalid `after` cursor");
+}
