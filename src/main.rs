@@ -137,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
                         noise_sigma: 0.5,
                         mean_qty: 5.0,
                         attack_rate_hz: 5_f64,
+                        pair: Pair::crypto_usd(Asset::BTC),
                     },
                     sim_token,
                 )
