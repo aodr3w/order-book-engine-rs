@@ -14,9 +14,9 @@ use axum::{
         FromRequest, FromRequestParts, Path, Query, Request, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
-    http::StatusCode,
+    http::{HeaderName, StatusCode},
     middleware,
-    response::IntoResponse,
+    response::{AppendHeaders, IntoResponse},
     routing::{delete, get, post},
 };
 use uuid::Uuid;
@@ -26,9 +26,11 @@ use crate::{
     orderbook::BookSnapshot,
     orders::{Order, OrderType, Side},
     state::AppState,
+    store::StoreError,
     trade::Trade,
 };
 
+const SOFT_MAX_LIMIT: usize = 1_000;
 type ApiErr = (StatusCode, Json<serde_json::Value>);
 fn err(status: StatusCode, msg: &str) -> ApiErr {
     (status, Json(json!({ "error": msg })))
@@ -194,15 +196,29 @@ pub async fn get_trade_log(
     Path(pair): Path<Pair>,
     State(state): State<AppState>,
     Query(q): Query<TradesQuery>,
-) -> Result<Json<TradesPage>, StatusCode> {
-    let limit = q.limit.min(1000);
+) -> Result<impl IntoResponse, ApiErr> {
+    if q.limit == 0 {
+        return Err(err(StatusCode::BAD_REQUEST, "limit must be  > 0"));
+    }
+    let effective = q.limit.min(SOFT_MAX_LIMIT);
     let (items, next) = {
         let store = state.store.read().await;
-        store
-            .page_trade_asc(&pair.code(), q.after.as_deref(), limit)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        match store.page_trade_asc(&pair.code(), q.after.as_deref(), effective) {
+            Ok(ok) => ok,
+            Err(StoreError::BadCursor) => {
+                return Err(err(StatusCode::BAD_REQUEST, "invalid, `after` cursor"));
+            }
+            Err(e) => {
+                tracing::error!("store error: {e}");
+                return Err(err(StatusCode::INTERNAL_SERVER_ERROR, "store error"));
+            }
+        }
     };
-    Ok(Json(TradesPage { items, next }))
+    let headers = [(
+        HeaderName::from_static("x-effective-limit"),
+        effective.to_string(),
+    )];
+    Ok((AppendHeaders(headers), Json(TradesPage { items, next })))
 }
 
 /// `GET /book`
