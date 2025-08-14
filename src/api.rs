@@ -337,6 +337,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     let mut trade_rx = state.trade_tx.subscribe();
     let mut book_rx = state.book_tx.subscribe();
 
+    let pair_code = pair.code();
     //initial snapshot
     let initial = {
         let books = state.order_books.read().await; //TODO consider a RWLock
@@ -361,7 +362,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
         tokio::select! {
             Ok(trade) = trade_rx.recv() => {
 
-                if trade.symbol.cmp(&pair.code()).is_eq() {
+                if trade.symbol == pair_code {
                 if let Err(e) = socket.send(Message::Text(serde_json::to_string(&WsFrame::Trade(trade)).unwrap().into())).await {
                     error!("WebSocket send trade failed: {:?}", e);
                     break;
@@ -370,7 +371,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
 
             }
             Ok(updated_pair) = book_rx.recv() => {
-                if updated_pair.code().cmp(&pair.code()).is_eq(){
+                if updated_pair == pair {
                     //get related book
                     let book = {
                          state.order_books.read().await[&pair].clone()
