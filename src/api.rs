@@ -312,8 +312,6 @@ pub async fn cancel_order(
     State(state): State<AppState>,
     Path((pair, order_id)): Path<(Pair, u64)>,
 ) -> impl IntoResponse {
-    //TODO confirm pair is valid
-    //this is incomplete
     let mut books = state.order_books.write().await;
 
     let Some(book) = books.get_mut(&pair) else {
@@ -350,7 +348,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: AppState, pair: Pair) {
     let pair_code = pair.code();
     //initial snapshot
     let initial = {
-        let books = state.order_books.read().await; //TODO consider a RWLock
+        let books = state.order_books.read().await;
         match books.get(&pair) {
             Some(book) => BookSnapshot::for_pair(pair.clone(), book),
             None => BookSnapshot::empty(pair.clone()),
