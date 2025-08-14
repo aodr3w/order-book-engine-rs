@@ -30,7 +30,7 @@ impl FromStr for Asset {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")] // <-- key line: JSON is "BTC-USD"
+#[serde(try_from = "&'de str", into = "String")]
 pub struct Pair {
     pub base: Asset,
     pub quote: Asset,
@@ -70,9 +70,9 @@ impl FromStr for Pair {
 }
 
 // Glue for #[serde(try_from, into)]
-impl TryFrom<String> for Pair {
+impl<'a> TryFrom<&'a str> for Pair {
     type Error = String;
-    fn try_from(s: String) -> Result<Self, Self::Error> {
+    fn try_from(s: &'a str) -> Result<Self, Self::Error> {
         s.parse()
     }
 }
