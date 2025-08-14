@@ -51,7 +51,7 @@ where
         parts: &mut axum::http::request::Parts,
         state: &S,
     ) -> Result<Self, Self::Rejection> {
-        //Grab all named parama as a HashMap
+        //Grab all named params as a HashMap
         let Ok(Path(params)) = <axum::extract::Path<
             HashMap<std::string::String, std::string::String>,
         > as axum::extract::FromRequestParts<S>>::from_request_parts(
@@ -62,7 +62,16 @@ where
             return Ok(PairGuard); //no params -> nothing to validate
         };
         if let Some(pair_str) = params.get("pair") {
-            Pair::from_str(pair_str).map_err(|e| err(StatusCode::BAD_REQUEST, &e.to_string()))?;
+            Pair::from_str(pair_str).map_err(|e| {
+                let supported: Vec<String> = Pair::supported().iter().map(|p| p.code()).collect();
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": e.to_string(),
+                        "supported": supported
+                    })),
+                )
+            })?;
         }
         Ok(PairGuard)
     }
@@ -284,7 +293,7 @@ pub async fn create_order(
             .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
     }
 
-    //broadcast trades after successfull persistence
+    //broadcast trades after successful persistence
     for trade in &trades {
         let _ = state.trade_tx.send(trade.clone());
     }
