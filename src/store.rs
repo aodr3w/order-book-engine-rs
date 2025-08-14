@@ -14,10 +14,11 @@ use thiserror::Error;
 
 use crate::trade::Trade;
 
-//Cursor (opaque to clients)
+// Versioned, opaque cursor encoded as URL-safe base64 JSON.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Cursor {
-    ts_nanos: u128,
+    v: u8,          // cursor schema version; must be 1
+    ts_nanos: u128, // tie-breaker fields mirror key layout
     maker_id: u128,
     taker_id: u128,
     price: u64,
@@ -46,7 +47,13 @@ pub enum StoreError {
 
 pub type StoreResult<T> = Result<T, StoreError>;
 
-/// A simple ParityDB-backed store for trades, keyed by "symbol:timestamp".
+/// A simple ParityDB-backed store for trades.
+///
+/// Key layout (big-endian for lexicographic ordering):
+/// `"{symbol}:" + ts_nanos(u128) + maker_id(u128) + taker_id(u128) + price(u64) + quantity(u64)`
+///
+/// This guarantees chronological ordering under each `{symbol}:` prefix with
+/// deterministic tie-breakers when timestamps collide.
 pub struct Store {
     db: Db,
 }
@@ -89,6 +96,7 @@ impl Store {
     #[inline]
     fn cursor_from_trade(t: &Trade) -> Cursor {
         Cursor {
+            v: 1,
             ts_nanos: Self::to_nanos(t.timestamp),
             maker_id: t.maker_id,
             taker_id: t.taker_id,
@@ -105,7 +113,11 @@ impl Store {
     #[inline]
     fn decode_cursor(s: &str) -> StoreResult<Cursor> {
         let bytes = B64.decode(s).map_err(|_| StoreError::BadCursor)?;
-        serde_json::from_slice(&bytes).map_err(|_| StoreError::BadCursor)
+        let c: Cursor = serde_json::from_slice(&bytes).map_err(|_| StoreError::BadCursor)?;
+        if c.v != 1 {
+            return Err(StoreError::BadCursor);
+        }
+        Ok(c)
     }
 
     #[inline]
@@ -119,7 +131,7 @@ impl Store {
         k
     }
 
-    /// Insert a trade into the store under key "{symbol}:{timestamp_ms}".
+    /// Insert a trade into the store under the composite key described above.
     pub fn insert_trade(&mut self, trade: &Trade) -> StoreResult<()> {
         let config = config::standard();
         let col: ColId = 0;
@@ -129,6 +141,10 @@ impl Store {
         Ok(())
     }
 
+    /// Page forward (ascending time) for a symbol, starting *strictly after* `after`.
+    ///
+    /// Returns `(items, next_cursor)`. `next_cursor` is `Some(_)` only if there is at least
+    /// one more item beyond the returned page (look-ahead pagination).
     pub fn page_trade_asc(
         &self,
         symbol: &str,
@@ -143,46 +159,61 @@ impl Store {
             None => None,
             Some(s) => Some(Self::decode_cursor(s)?),
         };
+
         if let Some(ref c) = after_decoded {
+            // Validate that the exact key exists for this symbol, then start strictly after it.
             let full = Self::key_from_cursor(symbol, c);
-            let mut check = self.db.iter(col)?;
-            check.seek(&full)?;
-            match check.next()? {
-                Some((k, _)) if k == full => {}
+            it.seek(&full)?;
+            match it.next()? {
+                Some((k, _)) if k == full => {
+                    // positioned just after 'after'
+                }
                 _ => return Err(StoreError::BadCursor),
             }
-            // Start strictly after that exact key
-            it.seek(&full)?;
-            let _ = it.next()?; //consume the equal key
         } else {
             it.seek(&prefix)?;
         }
-        let mut items = Vec::with_capacity(limit.min(256));
-        let mut last_cursor: Option<String> = None;
 
-        while items.len() < limit {
+        // Look-ahead read: limit + 1 to know if there is another page.
+        let mut items = Vec::with_capacity(limit.min(256));
+        let mut last_cursor_for_page: Option<String> = None;
+        let mut read = 0usize;
+
+        while read < limit + 1 {
             match it.next()? {
                 Some((k, v)) if k.starts_with(&prefix) => {
                     let (trade, _): (Trade, usize) = bincode::decode_from_slice(&v, standard())?;
-                    last_cursor = Some(Self::encode_cursor(&Self::cursor_from_trade(&trade)));
-                    items.push(trade);
+                    if items.len() < limit {
+                        last_cursor_for_page =
+                            Some(Self::encode_cursor(&Self::cursor_from_trade(&trade)));
+                        items.push(trade);
+                    }
+                    read += 1;
                 }
                 _ => break,
             }
         }
 
-        Ok((items, last_cursor))
+        // Only expose a `next` cursor if there was at least one more record beyond this page.
+        let next = if read > limit && !items.is_empty() {
+            last_cursor_for_page
+        } else {
+            None
+        };
+
+        Ok((items, next))
     }
 
+    /// Delete all trades for a given symbol (using the exact colonized prefix).
     pub fn delete_trades(&mut self, symbol: &str) -> StoreResult<()> {
         let col: ColId = 0;
         let mut iter = self.db.iter(col)?;
-        iter.seek(symbol.as_bytes())?;
+        let prefix = Self::prefix(symbol);
+        iter.seek(&prefix)?;
 
-        let prefix = symbol.as_bytes();
         let mut batch = Vec::new();
         while let Some((key, _)) = iter.next()? {
-            if !key.starts_with(prefix) {
+            if !key.starts_with(&prefix) {
                 break;
             }
             batch.push((col, key.to_vec(), None));
@@ -192,6 +223,7 @@ impl Store {
         }
         Ok(())
     }
+
     pub fn iter_trades(&self) -> Result<impl Iterator<Item = Trade>, StoreError> {
         let config = config::standard();
         let mut iter = self.db.iter(0).map_err(StoreError::Parity)?;
@@ -210,10 +242,9 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
-    use crate::trade::Trade;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+    use std::time::Duration;
     use tempfile::tempdir;
 
     #[test]
@@ -240,28 +271,26 @@ mod tests {
         store.insert_trade(&t_old).unwrap();
         store.insert_trade(&t_new).unwrap();
 
+        // Page 1
         let (p1, c1) = store.page_trade_asc("BTC-USD", None, 1).unwrap();
         assert_eq!(p1.len(), 1);
-        assert_eq!(p1[0].price, 50); // ascending by time
+        assert_eq!(p1[0].price, 50);
+        assert!(c1.is_some(), "there should be a next page");
 
+        // Page 2 (last page) should have no next
         let (p2, c2) = store.page_trade_asc("BTC-USD", c1.as_deref(), 1).unwrap();
         assert_eq!(p2.len(), 1);
         assert_eq!(p2[0].price, 51);
-
-        let (p3, c3) = store.page_trade_asc("BTC-USD", c2.as_deref(), 1).unwrap();
-        assert!(p3.is_empty());
-        assert!(c3.is_none());
+        assert!(c2.is_none(), "no next after final page");
     }
 
     #[test]
     fn test_reject_cross_pair_cursor() {
-        use std::time::Duration;
-
         let dir = tempdir().unwrap();
         let mut store = Store::open(dir.path()).unwrap();
 
-        // Insert one BTC and one ETH trade with distinct nanosecond timestamps
-        let t_btc = Trade {
+        // Two BTC trades and one ETH trade
+        let t_btc1 = Trade {
             symbol: "BTC-USD".into(),
             price: 50,
             quantity: 1,
@@ -277,31 +306,36 @@ mod tests {
             taker_id: 201,
             timestamp: SystemTime::UNIX_EPOCH + Duration::from_nanos(2),
         };
-        store.insert_trade(&t_btc).unwrap();
+        let t_btc2 = Trade {
+            symbol: "BTC-USD".into(),
+            price: 52,
+            quantity: 3,
+            maker_id: 102,
+            taker_id: 202,
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_nanos(3),
+        };
+        store.insert_trade(&t_btc1).unwrap();
         store.insert_trade(&t_eth).unwrap();
+        store.insert_trade(&t_btc2).unwrap();
 
-        // Page BTC to get a BTC cursor
-        let (_btc_page1, btc_cursor) = store.page_trade_asc("BTC-USD", None, 1).unwrap();
-        assert!(btc_cursor.is_some(), "expected a BTC cursor");
+        // Page BTC with limit=1 to get a BTC cursor (since there is another BTC after it)
+        let (_page, btc_cursor) = store.page_trade_asc("BTC-USD", None, 1).unwrap();
+        assert!(btc_cursor.is_some(), "expected BTC next cursor");
 
         // Using a BTC cursor on ETH should be rejected
         let bad = store.page_trade_asc("ETH-USD", btc_cursor.as_deref(), 1);
         assert!(matches!(bad, Err(StoreError::BadCursor)));
 
-        // Using the BTC cursor on BTC should succeed (and likely yield empty page if only one BTC)
-        let ok = store.page_trade_asc("BTC-USD", btc_cursor.as_deref(), 1);
-        assert!(ok.is_ok(), "BTC cursor must be valid on BTC");
-        let (btc_page2, _c2) = ok.unwrap();
-        // Since we inserted only one BTC trade, the second page should be empty
-        assert!(btc_page2.is_empty());
+        // Using the BTC cursor on BTC should succeed and return the second BTC trade
+        let (page2, _c2) = store
+            .page_trade_asc("BTC-USD", btc_cursor.as_deref(), 1)
+            .unwrap();
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2[0].price, 52);
     }
 
     #[test]
     fn test_bad_cursor_malformed() {
-        use base64::Engine;
-        use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-        use tempfile::tempdir;
-
         let dir = tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
 
@@ -328,11 +362,38 @@ mod tests {
     }
 
     #[test]
-    fn test_bad_cursor_nonexistent_key() {
-        use base64::Engine;
-        use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
-        use std::time::Duration;
+    fn test_bad_cursor_wrong_version() {
+        let dir = tempdir().unwrap();
+        let mut store = Store::open(dir.path()).unwrap();
 
+        // Insert one trade so column exists
+        let t = Trade {
+            symbol: "BTC-USD".into(),
+            price: 50,
+            quantity: 1,
+            maker_id: 10,
+            taker_id: 20,
+            timestamp: SystemTime::UNIX_EPOCH + Duration::from_nanos(1),
+        };
+        store.insert_trade(&t).unwrap();
+
+        // Proper shape but v != 1
+        let bogus = serde_json::json!({
+            "v": 2u8,
+            "ts_nanos": 1u128,
+            "maker_id": 999u128,
+            "taker_id": 888u128,
+            "price": 123u64,
+            "quantity": 7u64
+        });
+        let bogus_cursor = B64.encode(serde_json::to_vec(&bogus).unwrap());
+
+        let res = store.page_trade_asc("BTC-USD", Some(&bogus_cursor), 10);
+        assert!(matches!(res, Err(StoreError::BadCursor)));
+    }
+
+    #[test]
+    fn test_bad_cursor_nonexistent_key() {
         let dir = tempdir().unwrap();
         let mut store = Store::open(dir.path()).unwrap();
 
@@ -347,11 +408,12 @@ mod tests {
         };
         store.insert_trade(&t).unwrap();
 
-        // Craft a "valid-looking" cursor (correct fields) that doesn't match any persisted key
+        // Craft a valid-looking v=1 cursor that doesn't match any persisted key
         let bogus = serde_json::json!({
+            "v": 1u8,
             "ts_nanos": 2u128,   // different than inserted trade
-            "maker_id": 999u64,
-            "taker_id": 888u64,
+            "maker_id": 999u128,
+            "taker_id": 888u128,
             "price": 123u64,
             "quantity": 7u64
         });
