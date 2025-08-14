@@ -200,13 +200,14 @@ pub async fn get_trade_log(
     if q.limit == 0 {
         return Err(err(StatusCode::BAD_REQUEST, "limit must be  > 0"));
     }
+    let pair_code = pair.code();
     let effective = q.limit.min(SOFT_MAX_LIMIT);
     let (items, next) = {
         let store = state.store.read().await;
-        match store.page_trade_asc(&pair.code(), q.after.as_deref(), effective) {
+        match store.page_trade_asc(&pair_code, q.after.as_deref(), effective) {
             Ok(ok) => ok,
             Err(StoreError::BadCursor) => {
-                return Err(err(StatusCode::BAD_REQUEST, "invalid, `after` cursor"));
+                return Err(err(StatusCode::BAD_REQUEST, "invalid `after` cursor"));
             }
             Err(e) => {
                 tracing::error!("store error: {e}");
