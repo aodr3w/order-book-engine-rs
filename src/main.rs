@@ -83,7 +83,7 @@ async fn get_app_listener(port: u16, state: AppState) -> anyhow::Result<(TcpList
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let state = AppState::new(Path::new("trade_store")).await.unwrap();
+    let state = AppState::new(Path::new("trade_store")).await?;
     let token = shutdown_token();
     let server_token = token.clone();
     let mm_token = token.clone();
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Simulate { port, secs } => {
             let secs = secs.unwrap_or_default();
             let mut handlers = tokio::task::JoinSet::new();
-            let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
+            let (listener, app) = get_app_listener(port, state.clone()).await?;
             tracing::warn!("spawning the server task, port: {}, {}", port, secs);
             handlers.spawn(async move {
                 tracing::info!(
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
             let ep = format!("{}:{}", base.clone(), port);
             tracing::info!("end_point: {}", ep);
             wait_for_server(&ep).await?;
-            seed_book(&ep).await.unwrap();
+            seed_book(&ep).await?;
             let pair = Pair::crypto_usd(instrument::Asset::BTC);
             //start market maker
             let mm = ep.clone();
@@ -149,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
             handlers.join_all().await;
         }
         Commands::Serve { port } => {
-            let (listener, app) = get_app_listener(port, state.clone()).await.unwrap();
+            let (listener, app) = get_app_listener(port, state.clone()).await?;
             let svh = tokio::spawn(async move {
                 tracing::info!(
                     "HTTP/WS server listening on {}",
