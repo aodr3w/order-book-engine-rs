@@ -1,6 +1,6 @@
 # Order Book Engine
 
-A high‑performance matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, a lightweight market‑maker, and a noisy traffic simulator.
+An order matching engine for multiple trading pairs, with REST & WebSocket APIs, persistent trade storage, a lightweight market‑maker, and a noisy traffic simulator.
 
 ## Features
 
