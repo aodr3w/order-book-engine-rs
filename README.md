@@ -128,8 +128,9 @@ Example response:
 - `symbol` must be a supported pair (see **Supported Symbols** below). Invalid symbols return `400` with a `supported` list.
 - `quantity` must be > 0 (else `400`).
 
-### NEW: DELETE /orders/{pair}/{id} — cancel an order
+### DELETE /orders/{pair}/{id} — cancel an order
 Cancels a previously posted order. `id` is the order ID returned by `POST /orders`.
+
 ```bash
 OID=$(curl -s -X POST http://127.0.0.1:3000/orders   -H "Content-Type: application/json"   -d '{"side":"Buy","order_type":"Limit","price":48,"quantity":1,"symbol":"BTC-USD"}'   | jq -r .order_id)
 
