@@ -15,7 +15,7 @@ use crate::instrument::Pair;
 #[derive(Clone)]
 pub struct SimConfig {
     pub api_base: String,
-    pub pair: Pair, // <— no more hard-coded symbol
+    pub pair: Pair,
     pub run_secs: Option<u64>,
     pub attack_rate_hz: f64, // Poisson rate λ
     pub noise_sigma: f64,    // N(0, σ) drift applied to mid each tick
@@ -81,6 +81,7 @@ pub async fn send_one_order(
 
 /// Noisy limit-order simulation loop.
 pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> anyhow::Result<()> {
+    let cgf_pair = cfg.pair.code();
     // A small client timeout is helpful under load; tweak as desired.
     let client: Client = ClientBuilder::new()
         .timeout(Duration::from_secs(5))
@@ -97,7 +98,6 @@ pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> 
 
     // Choose your quoting spread here
     let spread = 1.0_f64;
-
     loop {
         // hard stop
         if let Some(max_secs) = cfg.run_secs {
@@ -140,7 +140,7 @@ pub async fn run_simulation(cfg: SimConfig, cancel_token: CancellationToken) -> 
                 "order_type": "Limit",
                 "price": price_u64,
                 "quantity": qty_u64,
-                "symbol": cfg.pair.code(),
+                "symbol": cgf_pair
             }))
             .send()
             .await
